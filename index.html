@@ -1,0 +1,3650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2.5D Gaussian Splats Baker - Unity Offline Studio</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Three.js + OrbitControls (Local offline with CDN fallback) -->
+    <script src="libs/three.min.js" onerror="this.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'"></script>
+    <script src="libs/OrbitControls.js" onerror="this.src='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js'"></script>
+    <!-- JSZip (Local offline with CDN fallback) -->
+    <script src="libs/jszip.min.js" onerror="this.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'"></script>
+    <!-- ONNX Runtime Web (Local offline with CDN fallback) -->
+    <script src="libs/ort.min.js" onerror="this.src='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js'"></script>
+
+    <!-- Custom Splat Baker Modules -->
+    <script src="sample-explosion.js"></script>
+    <script src="splat-pipeline.js"></script>
+    <script src="splat-viewer3d.js"></script>
+    <script src="splat-effects.js"></script>
+    <script src="unity-templates.js"></script>
+    <script src="vat-exporter.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0b0d12;
+            --card-bg: #141720;
+            --card-border: rgba(255, 255, 255, 0.065);
+            --accent: #b45309;
+            --accent-hover: #d97706;
+            --text-main: #e2e8f0;
+            --text-dim: #8b9bb4;
+            --text-muted: #57657a;
+            --glass: rgba(255, 255, 255, 0.02);
+            --glass-card: rgba(20, 23, 32, 0.92);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* --- MAIN LAYOUT (STANDALONE FULL-WIDTH) --- */
+        .main-content {
+            margin-left: 0;
+            width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            min-height: 100vh;
+            background: var(--bg-color);
+            padding: 0.60rem 0.85rem;
+            gap: 0.55rem;
+        }
+
+        .bg-glow {
+            display: none;
+        }
+
+        /* --- BUTTONS --- */
+        .btn {
+            font-family: inherit;
+            font-size: 0.80rem;
+            font-weight: 600;
+            padding: 0.38rem 0.68rem;
+            border-radius: 4px;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            user-select: none;
+            box-shadow: none;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #b45309;
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            color: #ffffff;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #d97706;
+            border-color: rgba(245, 158, 11, 0.55);
+        }
+
+        .btn-cyan {
+            background: #0369a1;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #ffffff;
+        }
+
+        .btn-cyan:hover:not(:disabled) {
+            background: #0284c7;
+            border-color: rgba(56, 189, 248, 0.55);
+        }
+
+        .btn-green {
+            background: #047857;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: #ffffff;
+        }
+
+        .btn-green:hover:not(:disabled) {
+            background: #059669;
+            border-color: rgba(16, 185, 129, 0.55);
+        }
+
+        .btn-purple {
+            background: #475569;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            color: #ffffff;
+        }
+
+        .btn-purple:hover:not(:disabled) {
+            background: #64748b;
+            border-color: rgba(148, 163, 184, 0.55);
+        }
+
+        .btn-sm {
+            padding: 0.24rem 0.54rem;
+            font-size: 0.75rem;
+            border-radius: 3px;
+        }
+
+        /* --- APP WORKSPACE 3-COLUMN / RESPONSIVE GRID --- */
+        .app-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 320px;
+            gap: 0.60rem;
+            z-index: 5;
+            flex: 1;
+            align-items: start;
+        }
+
+        .preview-col-video, .preview-col-3d {
+            display: flex;
+            flex-direction: column;
+            gap: 0.60rem;
+            min-width: 0;
+        }
+
+        @media (max-width: 1450px) {
+            .app-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .control-panel {
+                grid-column: span 2;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 0.60rem;
+            }
+        }
+
+        @media (max-width: 960px) {
+            .app-grid {
+                grid-template-columns: 1fr;
+            }
+            .control-panel {
+                grid-column: span 1;
+                display: flex;
+                flex-direction: column;
+            }
+        }
+
+        /* --- PREVIEW CARDS (VIDEO LEFT, 3D VIEWPORT RIGHT) --- */
+        .preview-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 5px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+
+        .card-header {
+            padding: 0.35rem 0.60rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-main);
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            height: clamp(380px, 48vh, 640px);
+            min-height: 380px;
+            background: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .canvas-wrapper.checkerboard {
+            background: repeating-conic-gradient(#151821 0% 25%, #0d0f14 0% 50%) 50% / 16px 16px;
+        }
+
+        .canvas-wrapper canvas, .canvas-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .window-overlay-controls {
+            padding: 0.28rem 0.60rem;
+            background: rgba(14, 17, 23, 0.88);
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.77rem;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* --- RECTANGULAR TIMELINE WITH COMPACT BRACKETS [ & ] --- */
+        .video-timeline-panel {
+            padding: 0.32rem 0.60rem;
+            background: rgba(13, 16, 22, 0.96);
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .video-timeline-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .playback-btns {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .range-info-badges {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.74rem;
+            flex-wrap: wrap;
+        }
+
+        .range-badge {
+            padding: 1px 5px;
+            border-radius: 3px;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-dim);
+        }
+
+        .in-badge {
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.25);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .cur-badge {
+            color: #38bdf8;
+            border-color: rgba(56, 189, 248, 0.25);
+            background: rgba(56, 189, 248, 0.05);
+        }
+
+        .out-badge {
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.25);
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .active-count-badge {
+            color: #fbbf24;
+            border-color: rgba(245, 158, 11, 0.25);
+            background: rgba(245, 158, 11, 0.05);
+        }
+
+        /* Rectangular Timeline Bar Container */
+        .timeline-bracket-track-container {
+            position: relative;
+            height: 22px;
+            background: #0f1218;
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 3px;
+            cursor: pointer;
+            user-select: none;
+            margin: 1px 0;
+            overflow: visible;
+        }
+
+        .timeline-track-ticks {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(90deg, transparent, transparent 15px, rgba(255, 255, 255, 0.02) 16px);
+            pointer-events: none;
+            border-radius: 3px;
+        }
+
+        .timeline-highlight-bar {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0%;
+            width: 100%;
+            background: rgba(180, 83, 9, 0.22);
+            border-top: 1px solid rgba(217, 119, 6, 0.6);
+            border-bottom: 1px solid rgba(217, 119, 6, 0.6);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .bracket-handle {
+            position: absolute;
+            top: -2px;
+            bottom: -2px;
+            width: 14px;
+            z-index: 10;
+            cursor: ew-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 11px;
+            line-height: 1;
+            user-select: none;
+            transition: filter 0.15s ease;
+            pointer-events: auto;
+        }
+
+        .bracket-handle span {
+            pointer-events: none;
+        }
+
+        .bracket-handle:hover {
+            filter: brightness(1.25);
+        }
+
+        .bracket-handle-left {
+            left: 0%;
+            transform: translateX(-100%);
+            background: #059669;
+            color: #ffffff;
+            border-radius: 2px 0 0 2px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+        }
+
+        .bracket-handle-right {
+            left: 100%;
+            transform: translateX(0%);
+            background: #dc2626;
+            color: #ffffff;
+            border-radius: 0 2px 2px 0;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+        }
+
+        .timeline-playhead-needle {
+            position: absolute;
+            top: -2px;
+            bottom: -2px;
+            width: 2px;
+            background: #38bdf8;
+            z-index: 15;
+            pointer-events: none;
+            transform: translateX(-50%);
+        }
+
+        .timeline-playhead-cap {
+            position: absolute;
+            top: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 9px;
+            height: 9px;
+            background: #38bdf8;
+            clip-path: polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%);
+            cursor: ew-resize;
+            pointer-events: auto;
+        }
+
+        /* --- 3D VIEWPORT (THREE.JS - Y-UP) --- */
+        .viewport-3d-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 5px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+
+        .viewport-3d-canvas-wrapper {
+            position: relative;
+            width: 100%;
+            height: clamp(380px, 48vh, 640px);
+            min-height: 380px;
+            background: #07080b;
+        }
+
+        .viewport-hud {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(11, 13, 18, 0.85);
+            backdrop-filter: blur(6px);
+            border: 1px solid var(--card-border);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.74rem;
+            color: var(--text-dim);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            z-index: 10;
+        }
+
+        .viewport-camera-tools {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 3px;
+            background: rgba(11, 13, 18, 0.85);
+            backdrop-filter: blur(6px);
+            border: 1px solid var(--card-border);
+            padding: 2px;
+            border-radius: 4px;
+            z-index: 10;
+        }
+
+        .viewport-bottom-bar {
+            padding: 0.32rem 0.60rem;
+            background: rgba(13, 16, 22, 0.95);
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .playback-controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .timeline-slider-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .timeline-slider {
+            flex: 1;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #1e2430;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .timeline-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #94a3b8;
+            cursor: pointer;
+        }
+
+        .timeline-slider::-webkit-slider-thumb:hover {
+            background: #cbd5e1;
+        }
+
+        .timeline-counter {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            min-width: 50px;
+        }
+
+        /* --- CONTROL PANEL (RIGHT) --- */
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+
+        .panel-section {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            padding: 0.60rem 0.68rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+
+        .panel-section-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 0.25rem;
+        }
+
+        .drop-zone-card {
+            border: 1px dashed rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.02);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            padding: 0.60rem 0.68rem;
+            border-radius: 4px;
+        }
+
+        .drop-zone-card:hover, .drop-zone-card.dragover {
+            border-color: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .drop-zone-card input[type="file"] {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+            z-index: 5;
+        }
+
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .control-row-cols {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .control-label-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.77rem;
+            color: var(--text-dim);
+        }
+
+        .control-value {
+            font-family: 'JetBrains Mono', monospace;
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.77rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #1e2430;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #94a3b8;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            background: #cbd5e1;
+        }
+
+        select {
+            background: #0e1117;
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 0.28rem 0.50rem;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 0.78rem;
+            outline: none;
+            cursor: pointer;
+        }
+
+        select:focus {
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .color-picker-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .color-swatch {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid var(--card-border);
+            cursor: pointer;
+            position: relative;
+        }
+
+        .color-swatch input[type="color"] {
+            opacity: 0;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            cursor: pointer;
+        }
+
+        /* --- PROGRESS MODAL --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(6px);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-card {
+            background: #131620;
+            border: 1px solid var(--card-border);
+            border-radius: 5px;
+            padding: 1.2rem;
+            max-width: 460px;
+            width: 90%;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-header h3 {
+            font-size: 1.08rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background: #1c202b;
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: #b45309;
+            border-radius: 3px;
+            transition: width 0.15s ease;
+        }
+
+        .progress-step-text {
+            font-size: 0.80rem;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Code Viewer Modal */
+        .code-modal-card {
+            background: #0f1218;
+            border: 1px solid var(--card-border);
+            border-radius: 5px;
+            width: 800px;
+            max-width: 95%;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+            overflow: hidden;
+        }
+
+        .code-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--card-border);
+            background: #141720;
+        }
+
+        .code-tab {
+            padding: 0.50rem 0.85rem;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            border-bottom: 2px solid transparent;
+        }
+
+        .code-tab.active {
+            color: #e2e8f0;
+            border-bottom-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.04);
+        }
+
+        .code-content {
+            flex: 1;
+            padding: 0.85rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.84rem;
+            color: #cbd5e1;
+            overflow-y: auto;
+            background: #090b10;
+            white-space: pre-wrap;
+        }
+
+        /* --- POST-PASS ANIMATION EFFECTS SYSTEM (30% / 70% SPLIT) --- */
+        .effects-panel-card {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .effects-split-container {
+            display: grid;
+            grid-template-columns: 30% 70%;
+            min-height: 220px;
+            height: 230px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        .effects-list-col {
+            border-right: 1px solid var(--card-border);
+            background: rgba(10, 12, 16, 0.65);
+            display: flex;
+            flex-direction: column;
+            padding: 6px;
+            gap: 6px;
+            overflow-y: auto;
+        }
+
+        .effects-add-bar {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .effect-select-dropdown {
+            flex: 1;
+            background: #0e1117;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            font-size: 0.74rem;
+            padding: 3px 5px;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .effects-items-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .effect-item-card {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 6px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+        }
+
+        .effect-item-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .effect-item-card.active {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.45);
+        }
+
+        .effect-item-card.disabled {
+            opacity: 0.45;
+        }
+
+        .effect-item-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .effect-item-title {
+            font-size: 0.74rem;
+            font-weight: 600;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .effect-item-subtitle {
+            font-size: 0.66rem;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .effect-item-del {
+            background: transparent;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 2px 4px;
+            font-size: 0.74rem;
+            opacity: 0.6;
+            transition: opacity 0.15s;
+        }
+
+        .effect-item-del:hover {
+            opacity: 1.0;
+        }
+
+        .effect-item-eye {
+            background: transparent;
+            border: none;
+            color: #38bdf8;
+            cursor: pointer;
+            padding: 2px 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.85;
+            transition: all 0.15s ease;
+        }
+
+        .effect-item-eye:hover {
+            opacity: 1.0;
+            color: #67e8f9;
+        }
+
+        .effect-item-eye.hidden-gizmo {
+            color: #64748b;
+            opacity: 0.40;
+        }
+
+        .effects-detail-col {
+            padding: 6px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            overflow-y: auto;
+            background: var(--card-bg);
+        }
+
+        .control-select-sm {
+            background: #0e1117;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            font-size: 0.74rem;
+            padding: 2px 4px;
+            border-radius: 3px;
+            outline: none;
+            width: 100%;
+        }
+
+        .pulse-highlight {
+            animation: pulseGlow 1.8s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .curve-editor-container {
+            position: relative;
+            width: 100%;
+            height: 105px;
+            background: #0a0c10;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 4px;
+            overflow: hidden;
+            user-select: none;
+            cursor: crosshair;
+        }
+
+        .curve-editor-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .curve-presets-bar {
+            display: flex;
+            gap: 3px;
+            flex-wrap: wrap;
+        }
+
+        .curve-preset-btn {
+            padding: 2px 6px;
+            font-size: 0.73rem;
+            font-weight: 500;
+            border-radius: 3px;
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .curve-preset-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .curve-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.70rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* --- NUMERIC DIRECT INPUT --- */
+        .control-num-input {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.77rem;
+            color: #e2e8f0;
+            background: #0e1117;
+            border: 1px solid rgba(255, 255, 255, 0.11);
+            border-radius: 3px;
+            padding: 2px 5px;
+            text-align: right;
+            outline: none;
+            width: 54px;
+            box-sizing: border-box;
+            transition: all 0.15s ease;
+        }
+
+        .control-num-input:focus {
+            border-color: #38bdf8;
+            background: #141824;
+            color: #fff;
+        }
+
+        .control-num-input::-webkit-outer-spin-button,
+        .control-num-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .control-num-input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        /* --- FOLDABLE CONTAINER & HEADERS --- */
+        .foldable-container {
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.015);
+            margin-top: 4px;
+            overflow: hidden;
+        }
+
+        .foldable-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 8px;
+            cursor: pointer;
+            user-select: none;
+            background: rgba(255, 255, 255, 0.03);
+            transition: background 0.15s ease;
+        }
+
+        .foldable-header:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .foldable-title {
+            font-size: 0.77rem;
+            font-weight: 600;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chevron-icon {
+            transition: transform 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            color: var(--text-dim);
+        }
+
+        .foldable-header.collapsed .chevron-icon {
+            transform: rotate(-90deg);
+        }
+
+        .foldable-body {
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .foldable-body.collapsed {
+            display: none;
+        }
+
+        /* --- CONTROL ACTIONS DOCK (BOTTOM OF SETTINGS COLUMN) --- */
+        .control-actions-dock {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-top: 0.2rem;
+        }
+
+        /* --- EXPORT MODAL --- */
+        .export-modal-card {
+            background: #131620;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            padding: 1.2rem;
+            max-width: 520px;
+            width: 95%;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+        }
+
+        .export-preview-box {
+            background: #090b10;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .export-preview-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 2px 0;
+        }
+
+        .export-preview-name {
+            color: #38bdf8;
+            word-break: break-all;
+        }
+
+        .bottom-card {
+            border-radius: 5px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        }
+
+        .histogram-canvas-wrapper {
+            position: relative;
+            height: 110px;
+            background: #0a0c10;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 4px;
+            overflow: hidden;
+            user-select: none;
+            cursor: crosshair;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Workspace -->
+    <div class="main-content" id="main-content">
+
+        <!-- Main Content 3-Column Grid (Video Left | 3D Viewport Middle | Settings Far Right) -->
+        <div class="app-grid">
+            
+            <!-- Column 1: RGB Video Preview (Top) + Color & Luminance Histogram Noise Filter (Bottom) -->
+            <div class="preview-col-video">
+                <div class="preview-card">
+                    <div class="card-header">
+                        <span class="card-header-title">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                            RGB Video (Source)
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button class="btn btn-sm" id="btn-pipette" title="Click to sample background key color" onclick="togglePipetteMode()">
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m14 2 4 4L7 17l-4 1 1-4L14 2z"/></svg>
+                                Eyedropper
+                            </button>
+                            <span id="rgb-stats" style="font-size: 0.74rem; color: var(--text-dim); font-family: monospace;">0x0 • 0f</span>
+                        </div>
+                    </div>
+
+                    <div class="canvas-wrapper checkerboard" id="wrapper-rgb">
+                        <canvas id="canvas-rgb" onclick="onCanvasRgbClick(event)"></canvas>
+                    </div>
+
+                    <!-- Sleek Rectangular Timeline with Compact Drag Brackets [ & ] -->
+                    <div class="video-timeline-panel">
+                        <div class="video-timeline-controls">
+                            <div class="playback-btns">
+                                <button class="btn btn-sm" id="btn-video-play" title="Play / Pause video" onclick="toggleVideoPlayPause()">
+                                    <svg id="video-play-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                </button>
+                                <button class="btn btn-sm" title="Previous frame" onclick="stepVideoFrame(-1)">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                                </button>
+                                <button class="btn btn-sm" title="Next frame" onclick="stepVideoFrame(1)">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
+                                </button>
+                                <button class="btn btn-sm btn-primary" id="btn-load-video-inline" title="Load video file (.mp4, .webm)" onclick="document.getElementById('video-file-input').click()">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    Load Video
+                                </button>
+                                <input type="file" id="video-file-input" style="display: none;" accept="video/mp4,video/webm" onchange="handleFileSelect(event)">
+                            </div>
+
+                            <div class="range-info-badges">
+                                <span class="range-badge in-badge" title="In Point">IN: <b id="lbl-range-in">1</b></span>
+                                <span class="range-badge cur-badge" title="Current Frame"><b id="lbl-range-cur">1</b>/<span id="lbl-range-total">0</span></span>
+                                <span class="range-badge out-badge" title="Out Point">OUT: <b id="lbl-range-out">1</b></span>
+                                <span class="range-badge active-count-badge" id="lbl-active-frames">0f</span>
+                            </div>
+
+                            <div style="display: flex; gap: 3px;">
+                                <button class="btn btn-sm" style="padding: 2px 6px; font-size: 0.74rem;" title="Set In Point to current frame" onclick="setInPointToCurrent()">[ In</button>
+                                <button class="btn btn-sm" style="padding: 2px 6px; font-size: 0.74rem;" title="Set Out Point to current frame" onclick="setOutPointToCurrent()">Out ]</button>
+                                <button class="btn btn-sm" style="padding: 2px 6px; font-size: 0.74rem;" title="Reset range to all frames" onclick="resetRangeToAll()">All</button>
+                            </div>
+                        </div>
+
+                        <!-- Sleek Compact Bracket Timeline Track -->
+                        <div class="timeline-bracket-track-container" id="bracket-timeline-container" title="Click to scrub • Drag brackets [ and ] to trim sequence">
+                            <div class="timeline-track-ticks"></div>
+                            <div class="timeline-highlight-bar" id="timeline-highlight"></div>
+
+                            <!-- Left Bracket [ (IN Handle) -->
+                            <div class="bracket-handle bracket-handle-left" id="bracket-handle-in" title="IN Point [">
+                                <span>[</span>
+                            </div>
+
+                            <!-- Right Bracket ] (OUT Handle) -->
+                            <div class="bracket-handle bracket-handle-right" id="bracket-handle-out" title="OUT Point ]">
+                                <span>]</span>
+                            </div>
+
+                            <!-- Playhead Needle -->
+                            <div class="timeline-playhead-needle" id="timeline-playhead">
+                                <div class="timeline-playhead-cap" id="timeline-playhead-handle" title="Playhead"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="window-overlay-controls">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="chk-show-alpha-checker" checked onchange="toggleCheckerboard(this.checked)">
+                            Alpha Checkerboard
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" id="chk-show-flow" onchange="redrawPreviewWindows()">
+                            Optical Flow (U, V)
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span>Density:</span>
+                            <input type="range" id="slider-flow-density" min="4" max="24" value="12" style="width: 50px;" oninput="redrawPreviewWindows()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom of Col 1: Monochrome Luminance Histogram Filter (In / Out / Curve) -->
+                <div class="preview-card bottom-card" id="card-histogram">
+                    <div class="card-header">
+                        <span class="card-header-title">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                            Luminance Histogram (In / Out / Curve)
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span id="lbl-hist-filtered" style="font-family: 'JetBrains Mono', monospace; font-size: 0.74rem; color: #94a3b8;">Filtered: 0%</span>
+                            <button class="btn btn-sm btn-cyan" onclick="applyColorGradingPreview()" title="Apply noise cutoff and curve to preview">⚡ Apply</button>
+                            <button class="btn btn-sm" onclick="resetHistogramFilter()" title="Reset In / Out / Curve">Reset</button>
+                        </div>
+                    </div>
+                    
+                    <div style="padding: 0.40rem 0.60rem; display: flex; flex-direction: column; gap: 4px;">
+                        <div class="histogram-canvas-wrapper" id="histogram-canvas-wrapper" title="Drag IN (red left), OUT (green right), or Curve (cyan middle)">
+                            <canvas id="canvas-histogram"></canvas>
+                        </div>
+                        
+                        <!-- Controls: IN, CURVE, OUT -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span style="color: #f87171;">IN (Black):</span>
+                                    <input type="number" class="control-num-input" id="num-hist-in" min="0.00" max="0.50" step="0.005" value="0.02" style="width: 48px;">
+                                </div>
+                                <input type="range" id="slider-hist-in" min="0.00" max="0.50" step="0.005" value="0.02">
+                            </div>
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span style="color: #38bdf8;">Curve (&gamma;):</span>
+                                    <input type="number" class="control-num-input" id="num-hist-gamma" min="0.20" max="3.00" step="0.05" value="1.00" style="width: 48px;">
+                                </div>
+                                <input type="range" id="slider-hist-gamma" min="0.20" max="3.00" step="0.05" value="1.00">
+                            </div>
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span style="color: #34d399;">OUT (White):</span>
+                                    <input type="number" class="control-num-input" id="num-hist-out" min="0.50" max="1.00" step="0.005" value="1.00" style="width: 48px;">
+                                </div>
+                                <input type="range" id="slider-hist-out" min="0.50" max="1.00" step="0.005" value="1.00">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 2: 3D Viewport (Top) + Post-Pass Depth Curve Editor (Bottom) -->
+            <div class="preview-col-3d">
+                <div class="viewport-3d-card">
+                    <div class="card-header">
+                        <span class="card-header-title">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                            3D Viewport (Y-Up Centered)
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <select id="select-render-mode" onchange="viewer3D.setRenderMode(this.value)" style="padding: 2px 6px; font-size: 0.76rem;">
+                                <option value="gaussian">Gaussian Soft</option>
+                                <option value="additive">Additive Glow</option>
+                                <option value="points">Points Cloud</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="viewport-3d-canvas-wrapper" id="viewport-3d-container">
+                        <!-- HUD Stats -->
+                        <div class="viewport-hud" id="viewport-hud">
+                            <div>Splats: <span id="hud-splats" style="color:#e2e8f0;">0</span></div>
+                            <div>Frame: <span id="hud-frame" style="color:#94a3b8;">0 / 0</span></div>
+                            <div>FPS: <span id="hud-fps" style="color:#94a3b8;">30.0</span></div>
+                            <div>Bounds: <span id="hud-bounds">N/A</span></div>
+                            <div>Origin: <span id="hud-origin" style="color:#f59e0b;">(0.00, 0.00, 0.00)</span></div>
+                            <div>Center: <span id="hud-center" style="color:#94a3b8;">(0.00, 0.00, 0.00)</span></div>
+                        </div>
+
+                        <!-- Camera presets in Y-Up -->
+                        <div class="viewport-camera-tools">
+                            <button class="btn btn-sm" title="45° Isometric View" onclick="viewer3D.setCameraPreset('isometric')">Iso</button>
+                            <button class="btn btn-sm" title="Front View" onclick="viewer3D.setCameraPreset('front')">Front</button>
+                            <button class="btn btn-sm" title="Top View" onclick="viewer3D.setCameraPreset('top')">Top</button>
+                            <button class="btn btn-sm" title="Side View" onclick="viewer3D.setCameraPreset('side')">Side</button>
+                        </div>
+                    </div>
+
+                    <!-- Viewport Playback & Scrubbing Controls -->
+                    <div class="viewport-bottom-bar">
+                        <div class="playback-controls-row">
+                            <div class="playback-btns">
+                                <button class="btn btn-sm" id="btn-play-pause" title="Play / Pause 3D Viewport" onclick="togglePlayPause()">
+                                    <svg id="play-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                </button>
+                                <button class="btn btn-sm" title="Previous frame" onclick="viewer3D.stepBackward()">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                                </button>
+                                <button class="btn btn-sm" title="Next frame" onclick="viewer3D.stepForward()">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
+                                </button>
+                                <select id="select-playback-speed" onchange="viewer3D.setSpeed(parseFloat(this.value))" style="padding: 2px 4px; font-size: 0.74rem;">
+                                    <option value="0.25">0.25x</option>
+                                    <option value="0.5">0.5x</option>
+                                    <option value="1.0" selected>1.0x</option>
+                                    <option value="2.0">2.0x</option>
+                                </select>
+                            </div>
+
+                            <div class="timeline-slider-group">
+                                <input type="range" class="timeline-slider" id="timeline-slider" min="0" max="0" value="0" oninput="onTimelineInput(this.value)">
+                                <span class="timeline-counter" id="timeline-counter">0 / 0</span>
+                            </div>
+
+                            <div style="display: flex; gap: 6px; font-size: 0.76rem; align-items: center;">
+                                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer; color: #f59e0b;" title="Show origin axes (0, 0, 0)">
+                                    <input type="checkbox" id="chk-origin-3d" checked onchange="viewer3D.setOriginAxesVisible(this.checked)">
+                                    Origin (0,0,0)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                                    <input type="checkbox" id="chk-grid-3d" checked onchange="viewer3D.setGridVisible(this.checked)">
+                                    Grid
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                                    <input type="checkbox" id="chk-bounding-3d" checked onchange="viewer3D.setBoundingBoxVisible(this.checked)">
+                                    Bounds
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer; color: #38bdf8;" title="Afficher ou masquer la vue 3D de l'effet">
+                                    <input type="checkbox" id="chk-gizmo-3d" checked onchange="viewer3D.setEffectGizmoVisible(this.checked)">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    3D Effet
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                                    <input type="checkbox" id="chk-quadtree-3d" onchange="viewer3D.setQuadtreeVisible(this.checked)">
+                                    Quadtree
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom of Col 2: Post-Pass Animation Effects Manager -->
+                <div class="preview-card bottom-card effects-panel-card">
+                    <div class="card-header">
+                        <span class="card-header-title">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                            Animation Effects (Post-Pass)
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="lbl-effects-status" style="font-family: 'JetBrains Mono', monospace; font-size: 0.73rem; color: #10b981; font-weight: 500;">✓ Up to date</span>
+                            <button class="btn btn-sm btn-green" id="btn-apply-effects" onclick="applyAnimationEffects()" title="Apply all active effects to the 3D splats animation" style="padding: 2px 8px; font-weight: 600;">
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                Apply
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="effects-split-container">
+                        <!-- Left Column: 30% Effects List & Add -->
+                        <div class="effects-list-col">
+                            <div class="effects-add-bar">
+                                <select id="select-add-effect" class="effect-select-dropdown">
+                                    <option value="height_over_time">Height over time</option>
+                                    <option value="scale_over_time">Scale over time</option>
+                                    <option value="emissive_over_time">Emissive over time (0 - 1)</option>
+                                    <option value="luminance_emissive">Luminance Emissive</option>
+                                    <option value="hsv_mix_tint">HSV Mix Tint</option>
+                                    <option value="smooth">Temporal Smooth (Anti-Stutter)</option>
+                                    <option value="spherify">Spherify (Hemisphere)</option>
+                                    <option value="isometric_proxy">Isometric Box Proxy</option>
+                                    <option value="shaper_in">Shaper In</option>
+                                    <option value="shaper_out">Shaper Out</option>
+                                </select>
+                                <button class="btn btn-sm btn-cyan" onclick="onAddEffectClicked()" title="Add selected effect" style="padding: 2px 6px; font-size: 0.72rem;">
+                                    + Add
+                                </button>
+                            </div>
+
+                            <!-- List of effects -->
+                            <div class="effects-items-list" id="effects-items-list">
+                                <!-- Dynamically rendered items -->
+                            </div>
+                        </div>
+
+                        <!-- Right Column: 70% Selected Effect Parameters -->
+                        <div class="effects-detail-col" id="effects-detail-col">
+                            <!-- Dynamically rendered depending on selected effect -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 3: Settings Panel (Far Right) -->
+            <div class="control-panel">
+                
+                <!-- Section 1: Pre-Pass Chroma Key & Color Grading -->
+                <div class="panel-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border); padding-bottom: 0.25rem;">
+                        <span class="panel-section-title" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Pre-Pass: Color & Matting
+                        </span>
+                        <div style="display: flex; gap: 3px;">
+                            <button class="btn btn-sm btn-cyan" style="padding: 2px 6px; font-size: 0.74rem;" onclick="applyColorGradingPreview()" title="Apply color grading & noise filter to preview">⚡ Apply</button>
+                            <button class="btn btn-sm" style="padding: 2px 6px; font-size: 0.74rem;" onclick="resetColorGrading()" title="Reset video color & key settings to default">Reset</button>
+                        </div>
+                    </div>
+
+                    <div class="control-row">
+                        <select id="select-keying-mode" onchange="onKeyingModeChanged()">
+                            <option value="auto" selected>Auto-Detect (Green / Black)</option>
+                            <option value="black">Black Background (Luminance Alpha)</option>
+                            <option value="green">Green Screen (Chroma Key)</option>
+                            <option value="custom">Custom Color (Eyedropper)</option>
+                            <option value="none">Disabled (Keep All Pixels)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-row" id="row-custom-color" style="display: none;">
+                        <div class="color-picker-row">
+                            <div class="color-swatch" id="color-swatch-display" style="background-color: #00c832;">
+                                <input type="color" id="input-key-color" value="#00c832" oninput="onColorPickerInput(this.value)">
+                            </div>
+                            <span id="label-rgb-color" style="font-family: monospace; font-size: 0.74rem; color: var(--text-dim);">RGB(0, 200, 50)</span>
+                        </div>
+                    </div>
+
+                    <!-- Video Brightness & Contrast -->
+                    <div class="control-row-cols">
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Brightness:</span>
+                                <input type="number" class="control-num-input" id="num-video-brightness" min="0.2" max="3.0" step="0.05" value="1.00">
+                            </div>
+                            <input type="range" id="slider-video-brightness" min="0.2" max="3.0" step="0.05" value="1.0">
+                        </div>
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Contrast:</span>
+                                <input type="number" class="control-num-input" id="num-video-contrast" min="0.2" max="2.5" step="0.05" value="1.00">
+                            </div>
+                            <input type="range" id="slider-video-contrast" min="0.2" max="2.5" step="0.05" value="1.0">
+                        </div>
+                    </div>
+
+                    <!-- Gamma (Shadow Lift) & Key Cutoff -->
+                    <div class="control-row-cols">
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Gamma:</span>
+                                <input type="number" class="control-num-input" id="num-video-gamma" min="0.4" max="3.0" step="0.05" value="1.00">
+                            </div>
+                            <input type="range" id="slider-video-gamma" min="0.4" max="3.0" step="0.05" value="1.0" title="Lift shadow & dark smoke details without washing out pure black">
+                        </div>
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Key Cutoff:</span>
+                                <input type="number" class="control-num-input" id="num-key-thresh" min="0.00" max="0.50" step="0.01" value="0.05">
+                            </div>
+                            <input type="range" id="slider-key-thresh" min="0.00" max="0.50" step="0.01" value="0.05">
+                        </div>
+                    </div>
+
+                    <!-- Edge Softness & Spill Suppression -->
+                    <div class="control-row-cols">
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Edge Softness:</span>
+                                <input type="number" class="control-num-input" id="num-key-soft" min="0.01" max="0.40" step="0.01" value="0.08">
+                            </div>
+                            <input type="range" id="slider-key-soft" min="0.01" max="0.40" step="0.01" value="0.08">
+                        </div>
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Spill Suppr:</span>
+                                <input type="number" class="control-num-input" id="num-spill" min="0.00" max="1.00" step="0.05" value="0.85">
+                            </div>
+                            <input type="range" id="slider-spill" min="0.00" max="1.00" step="0.05" value="0.85">
+                        </div>
+                    </div>
+
+                    <!-- Keep Interior Zones / Fill Interior Holes -->
+                    <div class="control-row" style="margin-top: 3px; padding-top: 3px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.77rem; font-weight: 500; cursor: pointer; color: #38bdf8;" title="Garder les zones intérieures sombres (fumée, creux) opaques en supprimant uniquement le fond extérieur connecté aux bords (détection des bords / flood-fill)">
+                            <input type="checkbox" id="chk-keep-interior" onchange="applyColorGradingPreview()">
+                            <span>Garder zones intérieures (Fill Holes)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Section 2: Bake & Render Parameters -->
+                <div class="panel-section">
+                    <span class="panel-section-title">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#94a3b8" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                        Bake & Render Settings
+                    </span>
+
+                    <!-- VAT Frame Mode & Texture Resolution (Reordered) -->
+                    <div class="control-row">
+                        <select id="select-vat-frames" onchange="onVatFrameModeChanged()" title="VAT Frame Mode" style="width: 100%;">
+                            <option value="64" selected>64 Frames (High Splat Density)</option>
+                            <option value="128">128 Frames (Extended Duration)</option>
+                            <option value="256">256 Frames (Ultra Long VFX)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-row">
+                        <select id="select-vat-profile" onchange="onVatProfileChanged()" title="Select VAT Texture Resolution & Splat Capacity" style="width: 100%; background: #0e1117; border-color: rgba(255,255,255,0.1); color: #e2e8f0; font-size: 0.78rem;">
+                            <option value="1024">1K (16k Splats • 16 bands)</option>
+                            <option value="2048" selected>2K (65k Splats • 32 bands)</option>
+                            <option value="4096">4K (262k Splats • 64 bands)</option>
+                            <option value="8192">8K (1M Splats • 128 bands)</option>
+                        </select>
+                    </div>
+
+                    <!-- Splat Dynamic Pooling & Recycling Checkbox + Skip Frames -->
+                    <div class="control-row" style="display: none;">
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.78rem; font-weight: 500; cursor: pointer; color: var(--text-main);" title="Recycles splats when alpha/size reaches 0 at frame t+1 to capture emerging bursts, secondary fire, and rising smoke">
+                            <input type="checkbox" id="chk-splat-pooling" onchange="onSettingChanged()">
+                            Dynamic Splat Pooling & Recycling
+                        </label>
+                    </div>
+
+                    <div class="control-row" id="row-pooling-skip" style="display: none;">
+                        <div class="control-label-group">
+                            <span>Pooling Warmup Skip:</span>
+                            <input type="number" class="control-num-input" id="num-pooling-skip" min="0" max="30" step="1" value="0">
+                        </div>
+                        <input type="range" id="slider-pooling-skip" min="0" max="30" step="1" value="0" title="Skip recycling for the first N burst frames">
+                    </div>
+
+                    <!-- Splat Budget / Limit (Auto profile capacity + max slider) -->
+                    <div class="control-row">
+                        <div class="control-label-group">
+                            <span title="VAT Texture profile capacity vs simultaneous active splat limit">Max Splats (Budget):</span>
+                            <input type="number" class="control-num-input" id="num-total-splats" min="500" max="1048576" step="500" value="15000" style="width: 60px;">
+                        </div>
+                        <input type="range" id="slider-total-splats" min="500" max="65536" step="500" value="15000">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); font-family: monospace;">
+                            <span>Capacity: <b id="lbl-profile-capacity" style="color:#94a3b8;">65,536</b></span>
+                            <span>Allocated: <b id="lbl-allocated-splats" style="color:#cbd5e1;">15,000</b></span>
+                        </div>
+                    </div>
+
+                    <!-- Size, Alpha, Splat Light -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px;">
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Size:</span>
+                                <input type="number" class="control-num-input" id="num-splat-size" min="0.1" max="5.0" step="0.1" value="2.0" style="width: 42px;">
+                            </div>
+                            <input type="range" id="slider-splat-size" min="0.1" max="5.0" step="0.1" value="2.0">
+                        </div>
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Alpha:</span>
+                                <input type="number" class="control-num-input" id="num-splat-alpha" min="0.1" max="3.0" step="0.1" value="1.0" style="width: 42px;">
+                            </div>
+                            <input type="range" id="slider-splat-alpha" min="0.1" max="3.0" step="0.1" value="1.0">
+                        </div>
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Light:</span>
+                                <input type="number" class="control-num-input" id="num-splat-brightness" min="0.2" max="3.5" step="0.1" value="1.0" style="width: 42px;">
+                            </div>
+                            <input type="range" id="slider-splat-brightness" min="0.2" max="3.5" step="0.1" value="1.0" title="3D Splats brightness & emission multiplier">
+                        </div>
+                    </div>
+
+                    <!-- Fade In & Fade Out (in frames) -->
+                    <div class="control-row-cols">
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Fade In (f):</span>
+                                <input type="number" class="control-num-input" id="num-fade-in" min="0" max="60" step="1" value="6">
+                            </div>
+                            <input type="range" id="slider-fade-in" min="0" max="60" step="1" value="6">
+                        </div>
+                        <div class="control-row">
+                            <div class="control-label-group">
+                                <span>Fade Out (f):</span>
+                                <input type="number" class="control-num-input" id="num-fade-out" min="0" max="60" step="1" value="12">
+                            </div>
+                            <input type="range" id="slider-fade-out" min="0" max="60" step="1" value="12">
+                        </div>
+                    </div>
+
+                    <!-- 3D Origin & Centering (Foldable) -->
+                    <div class="foldable-container">
+                        <div class="foldable-header collapsed" id="origin-foldable-header" onclick="toggleFoldable('origin-foldable-body', 'origin-foldable-header')">
+                            <span class="foldable-title">
+                                <span class="chevron-icon" id="origin-chevron">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                </span>
+                                3D Origin & Centering
+                            </span>
+                            <button class="btn btn-sm" style="padding: 1px 6px; font-size: 0.68rem; height: 20px;" onclick="event.stopPropagation(); resetOriginOffsets()" title="Reset origin offsets to (0, 0, 0)">Reset Offsets</button>
+                        </div>
+                        <div class="foldable-body collapsed" id="origin-foldable-body">
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span>Origin Pivot Mode:</span>
+                                </div>
+                                <select class="control-select" id="select-origin-mode" onchange="onOriginModeChanged()" style="width: 100%; font-size: 0.75rem; padding: 4px 6px; background: #0f172a; border: 1px solid var(--card-border); color: var(--text-main); border-radius: 4px;">
+                                    <option value="origin">💥 Explosion Blast Core (0,0,0)</option>
+                                    <option value="ground">⛰️ Ground Pivot (Y=0)</option>
+                                    <option value="center" selected>📦 Bounding Box Center</option>
+                                    <option value="centroid">⚖️ Center of Mass (Centroid)</option>
+                                    <option value="none">📐 Raw Camera 3D</option>
+                                </select>
+                            </div>
+                            <div class="control-row">
+                                <label style="display: flex; align-items: center; gap: 5px; font-size: 0.76rem; font-weight: 500; cursor: pointer; color: var(--text-main);">
+                                    <input type="checkbox" id="chk-auto-center" checked onchange="onSettingChanged()">
+                                    Enable Auto Centering
+                                </label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;">
+                                <div class="control-row">
+                                    <div class="control-label-group">
+                                        <span style="color: #f87171; font-weight: bold;">Offset X:</span>
+                                        <input type="number" class="control-num-input" id="num-offset-x" min="-5.0" max="5.0" step="0.05" value="0.00" style="width: 44px;">
+                                    </div>
+                                    <input type="range" id="slider-offset-x" min="-5.0" max="5.0" step="0.05" value="0" title="Manual X Offset (Left / Right)">
+                                </div>
+                                <div class="control-row">
+                                    <div class="control-label-group">
+                                        <span style="color: #4ade80; font-weight: bold;">Offset Y:</span>
+                                        <input type="number" class="control-num-input" id="num-offset-y" min="-5.0" max="5.0" step="0.05" value="0.00" style="width: 44px;">
+                                    </div>
+                                    <input type="range" id="slider-offset-y" min="-5.0" max="5.0" step="0.05" value="0" title="Manual Y Offset (Height / Ground)">
+                                </div>
+                                <div class="control-row">
+                                    <div class="control-label-group">
+                                        <span style="color: #60a5fa; font-weight: bold;">Offset Z:</span>
+                                        <input type="number" class="control-num-input" id="num-offset-z" min="-5.0" max="5.0" step="0.05" value="0.00" style="width: 44px;">
+                                    </div>
+                                    <input type="range" id="slider-offset-z" min="-5.0" max="5.0" step="0.05" value="0" title="Manual Z Offset (Depth)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="control-row">
+                        <div class="control-label-group">
+                            <span>Gradient Sensitivity:</span>
+                            <input type="number" class="control-num-input" id="num-grad-thresh" min="0.05" max="0.80" step="0.05" value="0.35">
+                        </div>
+                        <input type="range" id="slider-grad-thresh" min="0.05" max="0.80" step="0.05" value="0.35">
+                    </div>
+
+                    <!-- Depth Scale Z-Extrusion & Invert Depth -->
+                    <div class="control-row">
+                        <div class="control-label-group">
+                            <span>Depth Scale (Z):</span>
+                            <input type="number" class="control-num-input" id="num-depth-scale" min="0.0" max="5.0" step="0.1" value="1.0">
+                        </div>
+                        <input type="range" id="slider-depth-scale" min="0.0" max="5.0" step="0.1" value="1.0">
+                    </div>
+
+                    <div class="control-row">
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.78rem; font-weight: 500; cursor: pointer; color: var(--text-main);">
+                            <input type="checkbox" id="chk-invert-depth" onchange="onSettingChanged()">
+                            Invert Depth Direction
+                        </label>
+                    </div>
+
+                    <div class="control-row">
+                        <div class="control-label-group">
+                            <span>3D Focal Length (px):</span>
+                            <input type="number" class="control-num-input" id="num-focal" min="100" max="800" step="10" value="320">
+                        </div>
+                        <input type="range" id="slider-focal" min="100" max="800" step="10" value="320">
+                    </div>
+
+                    <!-- Splat 3D Transform Rotation (X, Y, Z in degrees) -->
+                    <div class="control-row" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-main);">Splat Rotation (3D Transform):</span>
+                            <button class="btn btn-sm" style="padding: 1px 6px; font-size: 0.68rem; height: 20px;" onclick="resetSplatRotation()" title="Reset rotation to (-90, 0, 0)">Reset</button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;">
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span style="color: #f87171; font-weight: bold;">X:</span>
+                                    <input type="number" class="control-num-input" id="num-rot-x" min="-180" max="180" step="5" value="-90" style="width: 38px;">
+                                </div>
+                                <input type="range" id="slider-rot-x" min="-180" max="180" step="5" value="-90" title="Pitch (Tilt Forward/Backward)">
+                            </div>
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span style="color: #4ade80; font-weight: bold;">Y:</span>
+                                    <input type="number" class="control-num-input" id="num-rot-y" min="-180" max="180" step="5" value="0" style="width: 38px;">
+                                </div>
+                                <input type="range" id="slider-rot-y" min="-180" max="180" step="5" value="0" title="Yaw (Rotate Left/Right)">
+                            </div>
+                            <div class="control-row">
+                                <div class="control-label-group">
+                                    <span style="color: #60a5fa; font-weight: bold;">Z:</span>
+                                    <input type="number" class="control-num-input" id="num-rot-z" min="-180" max="180" step="5" value="0" style="width: 38px;">
+                                </div>
+                                <input type="range" id="slider-rot-z" min="-180" max="180" step="5" value="0" title="Roll (Spin Clockwise/Counter-clockwise)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Right Actions Dock (Preview Eye, Bake Sequence, Export) -->
+                    <div class="control-actions-dock">
+                        <button class="btn btn-cyan btn-sm" id="btn-preview-frame" style="padding: 0.42rem 0.55rem;" title="Preview Frame" onclick="previewCurrentFrame()">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button class="btn btn-primary" id="btn-start-bake" style="flex: 1; justify-content: center; padding: 0.42rem 0.6rem;" title="Bake entire sequence with dense optical flow & 3D advection" onclick="startFullBakePipeline()">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Bake Sequence
+                        </button>
+                        <button class="btn btn-green" id="btn-export-vat" style="justify-content: center; padding: 0.42rem 0.65rem;" disabled onclick="openExportModal()" title="Export VAT Package">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Hidden Depth Map Canvas (Processed in background) -->
+        <div id="wrapper-depth" style="display: none;">
+            <canvas id="canvas-depth"></canvas>
+        </div>
+
+    </div>
+
+    <!-- Progress Modal -->
+    <div class="modal-overlay" id="progress-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <h3>Baking 2.5D Gaussian Splats...</h3>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="progress-bar-fill"></div>
+            </div>
+            <div class="progress-step-text" id="progress-step-text">Initializing...</div>
+            <div style="display: flex; justify-content: flex-end;">
+                <button class="btn btn-sm" onclick="closeProgressModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Code Viewer Modal -->
+    <div class="modal-overlay" id="code-modal" onclick="if(event.target === this) closeCodeModal()">
+        <div class="code-modal-card">
+            <div class="code-tabs">
+                <div class="code-tab active" id="tab-vat-shader" onclick="switchCodeTab('vat-shader')">SplatVAT_URP.shader</div>
+                <div class="code-tab" id="tab-vat-spawner" onclick="switchCodeTab('vat-spawner')">SplatVATSpawner.cs</div>
+                <div class="code-tab" id="tab-vat-mesh" onclick="switchCodeTab('vat-mesh')">SplatMeshGenerator.cs</div>
+                <div class="code-tab" id="tab-vat-settings" onclick="switchCodeTab('vat-settings')">Unity Settings (.txt)</div>
+                <div class="code-tab" id="tab-vat-readme" onclick="switchCodeTab('vat-readme')">README_UNITY_VAT.md</div>
+                <div style="flex: 1;"></div>
+                <button class="btn btn-sm" style="margin: 4px 8px;" onclick="copyCurrentCode()">Copy</button>
+                <button class="btn btn-sm" style="margin: 4px 8px 4px 0;" onclick="closeCodeModal()">✕</button>
+            </div>
+            <div class="code-content" id="code-content"></div>
+        </div>
+    </div>
+
+    <!-- Export Naming & Package Modal -->
+    <div class="modal-overlay" id="export-modal" onclick="if(event.target === this) closeExportModal()">
+        <div class="export-modal-card">
+            <div class="modal-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#10b981" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <h3>Export VAT Package</h3>
+            </div>
+            
+            <div class="control-row">
+                <div class="control-label-group">
+                    <span style="font-weight: 600; color: #e2e8f0;">Sequence Base Name:</span>
+                </div>
+                <input type="text" id="input-export-basename" class="control-num-input" style="width: 100%; text-align: left; padding: 6px 10px; font-size: 0.85rem;" placeholder="e.g. Explosion_01" oninput="updateExportPreviewNames()">
+            </div>
+
+            <div class="control-row" style="margin-top: 6px;">
+                <div class="control-label-group">
+                    <span style="font-weight: 600; color: #e2e8f0;">VAT Mode:</span>
+                </div>
+                <select id="select-export-pos-mode" class="control-num-input" style="width: 100%; text-align: left; padding: 5px 8px; font-size: 0.82rem; background: #0e1117; color: #e2e8f0;" onchange="updateExportPreviewNames()">
+                    <option value="position" selected>Positions Absolues (Monde 3D - Billboards origin)</option>
+                    <option value="displacement">Vecteurs de Déplacement (Delta Trajectoires - Splats Base)</option>
+                </select>
+            </div>
+
+            <div class="export-preview-box">
+                <div style="font-size: 0.70rem; color: var(--text-dim); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">Package File Manifest:</div>
+                <div class="export-preview-item">
+                    <span>Position PNG (Normalized):</span>
+                    <span class="export-preview-name" id="preview-filename-pos">VAT_Pos_Explosion_01.png</span>
+                </div>
+                <div class="export-preview-item">
+                    <span>Color Map (PNG):</span>
+                    <span class="export-preview-name" id="preview-filename-color">VAT_Color_Explosion_01.png</span>
+                </div>
+                <div class="export-preview-item">
+                    <span>Unity Settings (.txt):</span>
+                    <span class="export-preview-name" id="preview-filename-settings">VAT_Settings_Explosion_01.txt</span>
+                </div>
+                <div class="export-preview-item" style="border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 4px; margin-top: 2px;">
+                    <span style="color: #e2e8f0; font-weight: 600;">ZIP Archive (PNG Textures + TXT):</span>
+                    <span class="export-preview-name" id="preview-filename-zip" style="color: #34d399; font-weight: 600;">Explosion_01_VAT_Package.zip</span>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button class="btn btn-sm" onclick="downloadExportIndividual('color')" title="Download Color Map PNG only">Color PNG</button>
+                    <button class="btn btn-sm btn-blue" onclick="downloadExportIndividual('pos')" title="Download Normalized 0..1 Pos PNG only">Pos PNG</button>
+                    <button class="btn btn-sm" onclick="downloadExportIndividual('settings')" title="Download Settings TXT only">Settings TXT</button>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button class="btn btn-sm" onclick="closeExportModal()">Cancel</button>
+                    <button class="btn btn-sm btn-green" style="padding: 0.38rem 0.8rem; font-weight: 600;" onclick="confirmExportVatZip()">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download ZIP
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Video Element for Video Processing -->
+    <video id="hidden-video" style="display: none;" playsinline muted></video>
+
+    <!-- Main Controller Script -->
+    <script>
+        let pipeline = new SplatBakingPipeline();
+        let viewer3D = null;
+        let effectsManager = null;
+        let depthCurveEditor = null; // for backwards compatibility
+        let histogramFilter = null;
+        let activeTab = 'vat-shader';
+        let isPipetteActive = false;
+        let loadedVideoBaseName = 'Explosion_01';
+
+        function toggleFoldable(bodyId, headerId) {
+            const body = document.getElementById(bodyId);
+            const header = document.getElementById(headerId);
+            if (body) body.classList.toggle('collapsed');
+            if (header) header.classList.toggle('collapsed');
+        }
+
+        // Video preview playback state
+        let videoPlayback = {
+            isPlaying: false,
+            timer: null,
+            currentFrame: 0,
+            fps: 30
+        };
+
+        // Trim range state
+        let trimState = {
+            start: 0,
+            end: 0,
+            total: 0
+        };
+
+        // ==========================================
+        // MONOCHROME LUMINANCE HISTOGRAM FILTER (IN / OUT / CURVE)
+        // ==========================================
+        class ColorHistogramFilter {
+            constructor(canvasId, pipelineInstance, onChange) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
+                this.pipeline = pipelineInstance;
+                this.onChange = onChange;
+                this.activeDrag = null; // 'in', 'out', 'gamma'
+                this.hoverTarget = null; // 'in', 'out', 'gamma'
+
+                this.initEvents();
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+            }
+
+            resize() {
+                if (!this.canvas) return;
+                const rect = this.canvas.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                this.canvas.width = Math.max(100, Math.floor(rect.width * dpr));
+                this.canvas.height = Math.max(50, Math.floor(rect.height * dpr));
+                this.draw();
+            }
+
+            getIn() {
+                return (this.pipeline && this.pipeline.histIn !== undefined) ? this.pipeline.histIn : 0.02;
+            }
+
+            getOut() {
+                return (this.pipeline && this.pipeline.histOut !== undefined) ? this.pipeline.histOut : 1.00;
+            }
+
+            getGamma() {
+                return (this.pipeline && this.pipeline.histGamma !== undefined) ? this.pipeline.histGamma : 1.00;
+            }
+
+            setValues(hIn, hOut, hGamma) {
+                if (!this.pipeline) return;
+                if (hIn !== undefined) {
+                    this.pipeline.histIn = Math.max(0.0, Math.min(this.getOut() - 0.01, hIn));
+                    this.pipeline.colorCutoffThreshold = this.pipeline.histIn;
+                    const sl = document.getElementById('slider-hist-in');
+                    const num = document.getElementById('num-hist-in');
+                    if (sl) sl.value = this.pipeline.histIn;
+                    if (num) num.value = this.pipeline.histIn.toFixed(3);
+                }
+                if (hOut !== undefined) {
+                    this.pipeline.histOut = Math.max(this.getIn() + 0.01, Math.min(1.0, hOut));
+                    const sl = document.getElementById('slider-hist-out');
+                    const num = document.getElementById('num-hist-out');
+                    if (sl) sl.value = this.pipeline.histOut;
+                    if (num) num.value = this.pipeline.histOut.toFixed(3);
+                }
+                if (hGamma !== undefined) {
+                    this.pipeline.histGamma = Math.max(0.2, Math.min(3.0, hGamma));
+                    const sl = document.getElementById('slider-hist-gamma');
+                    const num = document.getElementById('num-hist-gamma');
+                    if (sl) sl.value = this.pipeline.histGamma;
+                    if (num) num.value = this.pipeline.histGamma.toFixed(2);
+                }
+                this.draw();
+                if (this.onChange) this.onChange();
+            }
+
+            initEvents() {
+                if (!this.canvas) return;
+                const canvas = this.canvas;
+
+                const getCanvasCoords = (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    const clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
+                    const clientY = (e.touches && e.touches.length > 0) ? e.touches[0].clientY : e.clientY;
+                    const dpr = window.devicePixelRatio || 1;
+                    const sx = (clientX - rect.left) * dpr;
+                    const sy = (clientY - rect.top) * dpr;
+                    const xNorm = Math.max(0.0, Math.min(1.0, (clientX - rect.left) / rect.width));
+                    const yNorm = Math.max(0.0, Math.min(1.0, 1.0 - (clientY - rect.top) / rect.height));
+                    return { sx, sy, xNorm, yNorm, dpr, width: rect.width, height: rect.height };
+                };
+
+                const hitTest = (pos) => {
+                    const hIn = this.getIn();
+                    const hOut = this.getOut();
+                    const hGamma = this.getGamma();
+
+                    const xIn = hIn * pos.width;
+                    const xOut = hOut * pos.width;
+                    const xMid = (hIn + hOut) * 0.5 * pos.width;
+                    const yMid = Math.pow(0.5, hGamma) * pos.height;
+
+                    const clientX = pos.sx / pos.dpr;
+                    const clientY = pos.height - (pos.sy / pos.dpr);
+
+                    const hitRadius = 14;
+
+                    if (Math.hypot(clientX - xMid, clientY - yMid) <= hitRadius) return 'gamma';
+                    if (Math.abs(clientX - xIn) <= hitRadius) return 'in';
+                    if (Math.abs(clientX - xOut) <= hitRadius) return 'out';
+
+                    // Fallback to nearest boundary if clicked outside range
+                    if (clientX < xIn) return 'in';
+                    if (clientX > xOut) return 'out';
+                    return 'gamma';
+                };
+
+                canvas.addEventListener('mousedown', (e) => {
+                    const pos = getCanvasCoords(e);
+                    this.activeDrag = hitTest(pos);
+                    this.updateDrag(pos);
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (this.activeDrag) {
+                        const pos = getCanvasCoords(e);
+                        this.updateDrag(pos);
+                    } else {
+                        const rect = canvas.getBoundingClientRect();
+                        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                            const pos = getCanvasCoords(e);
+                            const hit = hitTest(pos);
+                            canvas.style.cursor = hit === 'gamma' ? 'ns-resize' : 'ew-resize';
+                        } else {
+                            canvas.style.cursor = 'crosshair';
+                        }
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    this.activeDrag = null;
+                });
+
+                canvas.addEventListener('touchstart', (e) => {
+                    const pos = getCanvasCoords(e);
+                    this.activeDrag = hitTest(pos);
+                    this.updateDrag(pos);
+                }, { passive: true });
+
+                window.addEventListener('touchmove', (e) => {
+                    if (this.activeDrag) {
+                        const pos = getCanvasCoords(e);
+                        this.updateDrag(pos);
+                    }
+                }, { passive: true });
+
+                window.addEventListener('touchend', () => {
+                    this.activeDrag = null;
+                });
+            }
+
+            updateDrag(pos) {
+                if (this.activeDrag === 'in') {
+                    const newIn = parseFloat(pos.xNorm.toFixed(3));
+                    this.setValues(newIn, undefined, undefined);
+                } else if (this.activeDrag === 'out') {
+                    const newOut = parseFloat(pos.xNorm.toFixed(3));
+                    this.setValues(undefined, newOut, undefined);
+                } else if (this.activeDrag === 'gamma') {
+                    // Fit gamma so that yNorm = 0.5^gamma => gamma = ln(yNorm) / ln(0.5)
+                    const clampedY = Math.max(0.05, Math.min(0.95, pos.yNorm));
+                    const newGamma = parseFloat((Math.log(clampedY) / Math.log(0.5)).toFixed(2));
+                    this.setValues(undefined, undefined, newGamma);
+                }
+            }
+
+            draw() {
+                if (!this.canvas || !this.ctx || !this.pipeline) return;
+                const ctx = this.ctx;
+                const dpr = window.devicePixelRatio || 1;
+                const w = this.canvas.width;
+                const h = this.canvas.height;
+                const frameIdx = (typeof videoPlayback !== 'undefined') ? videoPlayback.currentFrame : 0;
+
+                ctx.clearRect(0, 0, w, h);
+
+                // 1. Subtle Background Grid
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+                ctx.lineWidth = 1 * dpr;
+                ctx.beginPath();
+                for (let i = 1; i <= 3; i++) {
+                    const y = (h / 4) * i;
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(w, y);
+                }
+                for (let i = 1; i <= 4; i++) {
+                    const x = (w / 5) * i;
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, h);
+                }
+                ctx.stroke();
+
+                // 2. Compute 256-bin Monochrome Luminance Distribution
+                const numBins = 256;
+                const hist = this.pipeline.computeLuminanceHistogram(frameIdx, numBins);
+                const maxBin = Math.max(1, hist.maxBin);
+                const logMax = Math.log1p(maxBin);
+
+                // Draw filled monochrome distribution
+                ctx.beginPath();
+                ctx.moveTo(0, h);
+                for (let i = 0; i < numBins; i++) {
+                    const x = (i / (numBins - 1)) * w;
+                    const normVal = Math.log1p(hist.binsLum[i]) / logMax;
+                    const y = h - (normVal * (h - 8 * dpr));
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(w, h);
+                ctx.closePath();
+
+                const histGrad = ctx.createLinearGradient(0, 0, 0, h);
+                histGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+                histGrad.addColorStop(0.6, 'rgba(148, 163, 184, 0.25)');
+                histGrad.addColorStop(1, 'rgba(30, 41, 59, 0.05)');
+                ctx.fillStyle = histGrad;
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+                ctx.lineWidth = 1.4 * dpr;
+                ctx.stroke();
+
+                // 3. Shaded In/Out Cutoff Rejection Zones
+                const hIn = this.getIn();
+                const hOut = this.getOut();
+                const hGamma = this.getGamma();
+
+                const inX = Math.max(0, Math.min(w, hIn * w));
+                const outX = Math.max(0, Math.min(w, hOut * w));
+
+                // Left Rejection Zone (Black noise clip)
+                if (inX > 0) {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+                    ctx.fillRect(0, 0, inX, h);
+                }
+
+                // Right Rejection Zone (White overflow clip)
+                if (outX < w) {
+                    ctx.fillStyle = 'rgba(100, 116, 139, 0.22)';
+                    ctx.fillRect(outX, 0, w - outX, h);
+                }
+
+                // 4. Transfer Curve Overlay (Gamma Power Curve)
+                ctx.beginPath();
+                const curveSamples = 60;
+                for (let j = 0; j <= curveSamples; j++) {
+                    const t = j / curveSamples; // [0, 1] within [inX, outX]
+                    const cx = inX + t * (outX - inX);
+                    const normLum = Math.pow(t, hGamma);
+                    const cy = h - (normLum * (h - 8 * dpr));
+                    if (j === 0) ctx.moveTo(cx, cy);
+                    else ctx.lineTo(cx, cy);
+                }
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2.0 * dpr;
+                ctx.shadowColor = '#38bdf8';
+                ctx.shadowBlur = 4 * dpr;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // 5. IN Vertical Handle & Needle (Red)
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2 * dpr;
+                ctx.setLineDash([3 * dpr, 2 * dpr]);
+                ctx.beginPath();
+                ctx.moveTo(inX, 0);
+                ctx.lineTo(inX, h);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(inX, 7 * dpr, 4.5 * dpr, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 6. OUT Vertical Handle & Needle (Green)
+                ctx.strokeStyle = '#10b981';
+                ctx.lineWidth = 2 * dpr;
+                ctx.setLineDash([3 * dpr, 2 * dpr]);
+                ctx.beginPath();
+                ctx.moveTo(outX, 0);
+                ctx.lineTo(outX, h);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = '#10b981';
+                ctx.beginPath();
+                ctx.arc(outX, 7 * dpr, 4.5 * dpr, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 7. Gamma Midpoint Handle on Curve (Cyan)
+                const midX = inX + 0.5 * (outX - inX);
+                const midY = h - (Math.pow(0.5, hGamma) * (h - 8 * dpr));
+                ctx.fillStyle = '#38bdf8';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5 * dpr;
+                ctx.beginPath();
+                ctx.arc(midX, midY, 5 * dpr, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // 8. Labels
+                ctx.font = `${Math.round(10 * dpr)}px 'JetBrains Mono', monospace`;
+                ctx.fillStyle = '#f87171';
+                ctx.fillText(`IN: ${hIn.toFixed(2)}`, Math.max(4 * dpr, inX + 4 * dpr), h - 6 * dpr);
+
+                ctx.fillStyle = '#34d399';
+                ctx.fillText(`OUT: ${hOut.toFixed(2)}`, Math.min(w - 60 * dpr, outX - 55 * dpr), h - 6 * dpr);
+
+                // Update Filtered Percentage Label
+                const pct = hist.totalPixels > 0 ? ((hist.filteredPixels / hist.totalPixels) * 100).toFixed(1) : '0.0';
+                const lblFiltered = document.getElementById('lbl-hist-filtered');
+                if (lblFiltered) lblFiltered.textContent = `Filtered: ${pct}%`;
+            }
+        }
+
+        // ==========================================
+        // SLIDER <-> NUMERIC INPUT BINDING HELPER
+        // ==========================================
+        function bindSliderNumber(sliderId, numId, opts = {}) {
+            const slider = document.getElementById(sliderId);
+            const numInput = document.getElementById(numId);
+            if (!slider || !numInput) return;
+
+            const decimals = opts.decimals !== undefined ? opts.decimals : 2;
+            const min = opts.min !== undefined ? opts.min : parseFloat(slider.min);
+            const max = opts.max !== undefined ? opts.max : parseFloat(slider.max);
+            const step = opts.step !== undefined ? opts.step : (parseFloat(slider.step) || 1);
+
+            slider.addEventListener('input', () => {
+                const val = parseFloat(slider.value);
+                numInput.value = (step < 1) ? val.toFixed(decimals) : val;
+                if (opts.onInput) opts.onInput(val);
+            });
+
+            slider.addEventListener('change', () => {
+                const val = parseFloat(slider.value);
+                if (opts.onChange) opts.onChange(val);
+            });
+
+            numInput.addEventListener('input', () => {
+                let val = parseFloat(numInput.value);
+                if (isNaN(val)) return;
+                val = Math.max(min, Math.min(max, val));
+                slider.value = val;
+                if (opts.onInput) opts.onInput(val);
+            });
+
+            numInput.addEventListener('change', () => {
+                let val = parseFloat(numInput.value);
+                if (isNaN(val)) val = parseFloat(slider.value);
+                val = Math.max(min, Math.min(max, val));
+                numInput.value = (step < 1) ? val.toFixed(decimals) : val;
+                slider.value = val;
+                if (opts.onChange) opts.onChange(val);
+            });
+        }
+
+        // ==========================================
+        // APP INITIALIZATION
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            const viewportContainer = document.getElementById('viewport-3d-container');
+            viewer3D = new SplatViewer3D(viewportContainer);
+
+            // Sync viewer settings with UI defaults
+            viewer3D.setSizeMultiplier(2.0);
+            viewer3D.setAlphaMultiplier(1.0);
+
+            // Initialize Modular Animation Effects Manager (Height Over Time, Shaper In, Shaper Out)
+            effectsManager = new SplatEffectsManager();
+            if (pipeline) pipeline.effectsManager = effectsManager;
+            effectsManager.onGizmoUpdate = (eff) => {
+                if (viewer3D) viewer3D.updateEffectGizmo(eff);
+            };
+            effectsManager.renderUI();
+
+            // Initialize Color & Luminance Histogram Filter
+            histogramFilter = new ColorHistogramFilter('canvas-histogram', pipeline, (cutoff) => {
+                pipeline.colorCutoffThreshold = cutoff;
+            });
+
+            viewer3D.onFrameChange = (cur, total) => {
+                document.getElementById('timeline-slider').value = cur;
+                document.getElementById('timeline-counter').textContent = `${cur + 1} / ${total}`;
+                document.getElementById('hud-frame').textContent = `${cur + 1} / ${total}`;
+
+                // Sync effects curve playhead needle if active
+                if (effectsManager && effectsManager.curveCanvas) {
+                    effectsManager.curveCanvas.setPlayhead(cur, total);
+                }
+
+                // Sync 2D video preview if baked
+                const globalFrame = trimState.start + cur;
+                drawRGBFrame(globalFrame);
+            };
+
+            // Bind Pre-Pass Sliders & Numbers (Decoupled from heavy full-sequence re-renders)
+            bindSliderNumber('slider-video-brightness', 'num-video-brightness', { decimals: 2, min: 0.2, max: 3.0, step: 0.05, onInput: (v) => { pipeline.videoBrightness = v; } });
+            bindSliderNumber('slider-video-contrast', 'num-video-contrast', { decimals: 2, min: 0.2, max: 2.5, step: 0.05, onInput: (v) => { pipeline.videoContrast = v; } });
+            bindSliderNumber('slider-video-gamma', 'num-video-gamma', { decimals: 2, min: 0.4, max: 3.0, step: 0.05, onInput: (v) => { pipeline.videoGamma = v; } });
+            bindSliderNumber('slider-key-thresh', 'num-key-thresh', { decimals: 2, min: 0.00, max: 0.50, step: 0.01, onInput: (v) => { pipeline.keyThreshold = v; } });
+            bindSliderNumber('slider-key-soft', 'num-key-soft', { decimals: 2, min: 0.01, max: 0.40, step: 0.01, onInput: (v) => { pipeline.keySoftness = v; } });
+            bindSliderNumber('slider-spill', 'num-spill', { decimals: 2, min: 0.00, max: 1.00, step: 0.05, onInput: (v) => { pipeline.spillSuppression = v; } });
+
+            // Bind Monochrome Histogram Filter Sliders (IN / CURVE / OUT)
+            bindSliderNumber('slider-hist-in', 'num-hist-in', { decimals: 3, min: 0.00, max: 0.50, step: 0.005, onInput: (v) => {
+                if (histogramFilter) histogramFilter.setValues(v, undefined, undefined);
+            }});
+            bindSliderNumber('slider-hist-gamma', 'num-hist-gamma', { decimals: 2, min: 0.20, max: 3.00, step: 0.05, onInput: (v) => {
+                if (histogramFilter) histogramFilter.setValues(undefined, undefined, v);
+            }});
+            bindSliderNumber('slider-hist-out', 'num-hist-out', { decimals: 3, min: 0.50, max: 1.00, step: 0.005, onInput: (v) => {
+                if (histogramFilter) histogramFilter.setValues(undefined, v, undefined);
+            }});
+
+            // Bind Bake & Render Parameter Sliders & Numbers
+            bindSliderNumber('slider-pooling-skip', 'num-pooling-skip', { decimals: 0, min: 0, max: 30, step: 1, onInput: (v) => { pipeline.poolingSkipFrames = parseInt(v); } });
+            bindSliderNumber('slider-total-splats', 'num-total-splats', { decimals: 0, min: 500, max: 1048576, step: 500, onInput: (v) => { 
+                document.getElementById('lbl-allocated-splats').textContent = parseInt(v).toLocaleString('en-US');
+                pipeline.targetSplatCount = parseInt(v);
+            }, onChange: () => onSettingChanged() });
+            bindSliderNumber('slider-splat-size', 'num-splat-size', { decimals: 1, min: 0.1, max: 5.0, step: 0.1, onInput: (v) => onSplatSizeInput(v) });
+            bindSliderNumber('slider-splat-alpha', 'num-splat-alpha', { decimals: 1, min: 0.1, max: 3.0, step: 0.1, onInput: (v) => onSplatAlphaInput(v) });
+            bindSliderNumber('slider-splat-brightness', 'num-splat-brightness', { decimals: 1, min: 0.2, max: 3.5, step: 0.1, onInput: (v) => onSplatBrightnessInput(v) });
+            bindSliderNumber('slider-fade-in', 'num-fade-in', { decimals: 0, min: 0, max: 60, step: 1, onInput: (v) => { pipeline.fadeInFrames = parseInt(v); } });
+            bindSliderNumber('slider-fade-out', 'num-fade-out', { decimals: 0, min: 0, max: 60, step: 1, onInput: (v) => { pipeline.fadeOutFrames = parseInt(v); } });
+            bindSliderNumber('slider-grad-thresh', 'num-grad-thresh', { decimals: 2, min: 0.05, max: 0.80, step: 0.05, onInput: (v) => { pipeline.gradientThreshold = v; }, onChange: () => onSettingChanged() });
+            bindSliderNumber('slider-depth-scale', 'num-depth-scale', { decimals: 1, min: 0.0, max: 5.0, step: 0.1, onInput: (v) => { pipeline.depthScale = v; }, onChange: () => onSettingChanged() });
+            bindSliderNumber('slider-focal', 'num-focal', { decimals: 0, min: 100, max: 800, step: 10, onInput: (v) => { pipeline.focalLength = v; }, onChange: () => onSettingChanged() });
+
+            // Bind 3D Transform Euler Rotation Sliders (Pitch X, Yaw Y, Roll Z)
+            bindSliderNumber('slider-rot-x', 'num-rot-x', { decimals: 0, min: -180, max: 180, step: 5, onInput: (v) => {
+                if (pipeline) pipeline.rotationX = parseFloat(v) || 0;
+                onTransformRotationChanged();
+            }});
+            bindSliderNumber('slider-rot-y', 'num-rot-y', { decimals: 0, min: -180, max: 180, step: 5, onInput: (v) => {
+                if (pipeline) pipeline.rotationY = parseFloat(v) || 0;
+                onTransformRotationChanged();
+            }});
+            bindSliderNumber('slider-rot-z', 'num-rot-z', { decimals: 0, min: -180, max: 180, step: 5, onInput: (v) => {
+                if (pipeline) pipeline.rotationZ = parseFloat(v) || 0;
+                onTransformRotationChanged();
+            }});
+
+            // Bind 3D Origin Manual Fine-Tuning Offsets (Offset X, Offset Y, Offset Z)
+            bindSliderNumber('slider-offset-x', 'num-offset-x', { decimals: 2, min: -5.0, max: 5.0, step: 0.05, onInput: (v) => {
+                if (pipeline) pipeline.offsetX = parseFloat(v) || 0;
+                onOriginOffsetChanged();
+            }});
+            bindSliderNumber('slider-offset-y', 'num-offset-y', { decimals: 2, min: -5.0, max: 5.0, step: 0.05, onInput: (v) => {
+                if (pipeline) pipeline.offsetY = parseFloat(v) || 0;
+                onOriginOffsetChanged();
+            }});
+            bindSliderNumber('slider-offset-z', 'num-offset-z', { decimals: 2, min: -5.0, max: 5.0, step: 0.05, onInput: (v) => {
+                if (pipeline) pipeline.offsetZ = parseFloat(v) || 0;
+                onOriginOffsetChanged();
+            }});
+
+            updateVatProfileOptions();
+            setupDragAndDrop();
+            initBracketDragEvents();
+            onTransformRotationChanged();
+        });
+
+        function onAddEffectClicked() {
+            const sel = document.getElementById('select-add-effect');
+            if (!sel || !effectsManager) return;
+            effectsManager.addEffect(sel.value);
+        }
+
+        function applyAnimationEffects() {
+            if (!pipeline || !pipeline.raw3D || !pipeline.splatsBase) {
+                alert("Please compute / preview a splat sequence first.");
+                return;
+            }
+
+            try {
+                if (effectsManager) {
+                    effectsManager.applyToPipeline(pipeline);
+                }
+                if (viewer3D) {
+                    viewer3D.loadPipelineData(pipeline);
+                    viewer3D.updateHelpers();
+                    viewer3D.updateToFrame(viewer3D.currentFrame);
+                    if (effectsManager) {
+                        viewer3D.updateEffectGizmo(effectsManager.getSelectedEffect());
+                    }
+                }
+
+                updateHudStats();
+            } catch (e) {
+                console.error("Apply effects error:", e);
+                alert("Error applying effects: " + e.message);
+            }
+        }
+
+        function onOriginModeChanged() {
+            const mode = document.getElementById('select-origin-mode').value;
+            if (pipeline) {
+                pipeline.originMode = mode;
+                onOriginOffsetChanged();
+            }
+        }
+
+        function onOriginOffsetChanged() {
+            if (!pipeline || !pipeline.splatsAnim || !pipeline.raw3D) return;
+
+            // Recompute origin center offset & re-apply effects + rotation
+            if (effectsManager) {
+                effectsManager.applyToPipeline(pipeline);
+            } else {
+                pipeline.applyEffects();
+            }
+
+            if (viewer3D) {
+                viewer3D.updateToFrame(viewer3D.currentFrame);
+                viewer3D.updateHelpers();
+            }
+
+            updateHudStats();
+        }
+
+        function resetOriginOffsets() {
+            document.getElementById('slider-offset-x').value = 0;
+            document.getElementById('num-offset-x').value = '0.00';
+            document.getElementById('slider-offset-y').value = 0;
+            document.getElementById('num-offset-y').value = '0.00';
+            document.getElementById('slider-offset-z').value = 0;
+            document.getElementById('num-offset-z').value = '0.00';
+
+            if (pipeline) {
+                pipeline.offsetX = 0;
+                pipeline.offsetY = 0;
+                pipeline.offsetZ = 0;
+            }
+            onOriginOffsetChanged();
+        }
+
+        function updateHudStats() {
+            if (!pipeline) return;
+            const bbox = pipeline.computeBoundingBox();
+            if (bbox) {
+                const elBounds = document.getElementById('hud-bounds');
+                if (elBounds) {
+                    elBounds.textContent = `${bbox.size[0].toFixed(2)} x ${bbox.size[1].toFixed(2)} x ${bbox.size[2].toFixed(2)}`;
+                }
+                const elCenter = document.getElementById('hud-center');
+                if (elCenter) {
+                    elCenter.textContent = `(${bbox.center[0].toFixed(2)}, ${bbox.center[1].toFixed(2)}, ${bbox.center[2].toFixed(2)})`;
+                }
+            }
+            const elOrigin = document.getElementById('hud-origin');
+            if (elOrigin && pipeline.centerOffset) {
+                elOrigin.textContent = `(${(-pipeline.centerOffset[0]).toFixed(2)}, ${(-pipeline.centerOffset[1]).toFixed(2)}, ${(-pipeline.centerOffset[2]).toFixed(2)})`;
+            }
+        }
+
+        function onTransformRotationChanged() {
+            if (!pipeline || !pipeline.splatsAnim || !pipeline.raw3D) return;
+
+            // Apply rotation and active effects
+            if (effectsManager) {
+                effectsManager.applyToPipeline(pipeline);
+            }
+            if (viewer3D) {
+                viewer3D.updateToFrame(viewer3D.currentFrame);
+                viewer3D.updateHelpers();
+            }
+
+            updateHudStats();
+        }
+
+        function resetSplatRotation() {
+            document.getElementById('slider-rot-x').value = -90;
+            document.getElementById('num-rot-x').value = '-90';
+            document.getElementById('slider-rot-y').value = 0;
+            document.getElementById('num-rot-y').value = '0';
+            document.getElementById('slider-rot-z').value = 0;
+            document.getElementById('num-rot-z').value = '0';
+
+            if (pipeline) {
+                pipeline.rotationX = -90;
+                pipeline.rotationY = 0;
+                pipeline.rotationZ = 0;
+            }
+            onTransformRotationChanged();
+        }
+
+        function toggleSidebar() {
+            // Standalone: no sidebar
+        }
+
+        function toggleCheckerboard(enabled) {
+            document.getElementById('wrapper-rgb').classList.toggle('checkerboard', enabled);
+        }
+
+        function onSettingChanged() {
+            if (!pipeline) return;
+            const totalSplats = parseInt(document.getElementById('slider-total-splats').value);
+            const gradThresh = parseFloat(document.getElementById('slider-grad-thresh').value);
+            const depthScale = parseFloat(document.getElementById('slider-depth-scale').value);
+            const invertDepth = document.getElementById('chk-invert-depth').checked;
+            const focal = parseFloat(document.getElementById('slider-focal').value);
+            const autoCenter = document.getElementById('chk-auto-center').checked;
+            const originMode = document.getElementById('select-origin-mode') ? document.getElementById('select-origin-mode').value : 'center';
+            const offX = parseFloat(document.getElementById('slider-offset-x').value) || 0;
+            const offY = parseFloat(document.getElementById('slider-offset-y').value) || 0;
+            const offZ = parseFloat(document.getElementById('slider-offset-z').value) || 0;
+            const enablePooling = document.getElementById('chk-splat-pooling').checked;
+            const poolingSkip = parseInt(document.getElementById('slider-pooling-skip').value) || 0;
+            const rotX = parseFloat(document.getElementById('slider-rot-x').value);
+            const rotY = parseFloat(document.getElementById('slider-rot-y').value) || 0;
+            const rotZ = parseFloat(document.getElementById('slider-rot-z').value) || 0;
+            const keepInterior = document.getElementById('chk-keep-interior') ? document.getElementById('chk-keep-interior').checked : false;
+
+            pipeline.configure({
+                targetSplatCount: totalSplats,
+                gradientThreshold: gradThresh,
+                depthScale: depthScale,
+                invertDepth: invertDepth,
+                focalLength: focal,
+                autoCenter3D: autoCenter,
+                originMode: originMode,
+                offsetX: offX,
+                offsetY: offY,
+                offsetZ: offZ,
+                rotationX: rotX,
+                rotationY: rotY,
+                rotationZ: rotZ,
+                enableSplatPooling: enablePooling,
+                poolingSkipFrames: poolingSkip,
+                keepInteriorZones: keepInterior
+            });
+
+            if (viewer3D && viewer3D.frameCount <= 1 && pipeline.rawFrames && pipeline.rawFrames.length > 0) {
+                previewCurrentFrame();
+            }
+        }
+
+        function onSplatSizeInput(val) {
+            if (viewer3D) viewer3D.setSizeMultiplier(val);
+        }
+
+        function onSplatAlphaInput(val) {
+            if (viewer3D) viewer3D.setAlphaMultiplier(val);
+        }
+
+        function onSplatBrightnessInput(val) {
+            if (viewer3D) viewer3D.setBrightnessMultiplier(val);
+        }
+
+        // ==========================================
+        // RECTANGULAR TIMELINE WITH COMPACT BRACKETS [ & ]
+        // ==========================================
+        function initTimelineRange(totalFrames) {
+            trimState.total = totalFrames;
+            trimState.start = 0;
+            trimState.end = Math.max(0, totalFrames - 1);
+            videoPlayback.currentFrame = 0;
+
+            updateTimelineUI();
+            pipeline.setTrimRange(trimState.start, trimState.end);
+        }
+
+        function updateTimelineUI() {
+            const total = trimState.total;
+            if (total === 0) return;
+
+            const highlight = document.getElementById('timeline-highlight');
+            const bracketIn = document.getElementById('bracket-handle-in');
+            const bracketOut = document.getElementById('bracket-handle-out');
+            const playhead = document.getElementById('timeline-playhead');
+
+            const denom = Math.max(1, total - 1);
+            const startPct = (trimState.start / denom) * 100;
+            const endPct = (trimState.end / denom) * 100;
+            const curPct = (videoPlayback.currentFrame / denom) * 100;
+
+            highlight.style.left = `${startPct}%`;
+            highlight.style.width = `${Math.max(0, endPct - startPct)}%`;
+
+            bracketIn.style.left = `${startPct}%`;
+            bracketOut.style.left = `${endPct}%`;
+            playhead.style.left = `${curPct}%`;
+
+            const activeCount = trimState.end - trimState.start + 1;
+            const activeDuration = (activeCount / 30.0).toFixed(2);
+
+            document.getElementById('lbl-range-in').textContent = trimState.start + 1;
+            document.getElementById('lbl-range-out').textContent = trimState.end + 1;
+            document.getElementById('lbl-range-cur').textContent = videoPlayback.currentFrame + 1;
+            document.getElementById('lbl-range-total').textContent = total;
+            document.getElementById('lbl-active-frames').textContent = `${activeCount}f (${activeDuration}s)`;
+        }
+
+        function onRangeInInput(frameVal) {
+            trimState.start = Math.max(0, Math.min(frameVal, trimState.end));
+            if (videoPlayback.currentFrame < trimState.start) {
+                videoPlayback.currentFrame = trimState.start;
+                drawRGBFrame(videoPlayback.currentFrame);
+            }
+            updateTimelineUI();
+            pipeline.setTrimRange(trimState.start, trimState.end);
+        }
+
+        function onRangeOutInput(frameVal) {
+            trimState.end = Math.min(trimState.total - 1, Math.max(frameVal, trimState.start));
+            if (videoPlayback.currentFrame > trimState.end) {
+                videoPlayback.currentFrame = trimState.end;
+                drawRGBFrame(videoPlayback.currentFrame);
+            }
+            updateTimelineUI();
+            pipeline.setTrimRange(trimState.start, trimState.end);
+        }
+
+        function onVideoScrubInput(frameVal) {
+            pauseVideo();
+            videoPlayback.currentFrame = Math.max(0, Math.min(trimState.total - 1, frameVal));
+            drawRGBFrame(videoPlayback.currentFrame);
+            if (histogramFilter) histogramFilter.draw();
+            updateTimelineUI();
+        }
+
+        function setInPointToCurrent() {
+            onRangeInInput(videoPlayback.currentFrame);
+        }
+
+        function setOutPointToCurrent() {
+            onRangeOutInput(videoPlayback.currentFrame);
+        }
+
+        function resetRangeToAll() {
+            trimState.start = 0;
+            trimState.end = Math.max(0, trimState.total - 1);
+            updateTimelineUI();
+            pipeline.setTrimRange(trimState.start, trimState.end);
+        }
+
+        // Direct compact bracket dragging & interactive timeline track scrubbing
+        function initBracketDragEvents() {
+            const container = document.getElementById('bracket-timeline-container');
+            const handleIn = document.getElementById('bracket-handle-in');
+            const handleOut = document.getElementById('bracket-handle-out');
+            const playheadCap = document.getElementById('timeline-playhead-handle');
+
+            let activeDrag = null; // 'in', 'out', 'playhead'
+
+            function getFrameFromClientX(clientX) {
+                if (!trimState.total || trimState.total <= 1) return 0;
+                const rect = container.getBoundingClientRect();
+                const offsetX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+                const pct = offsetX / rect.width;
+                return Math.round(pct * (trimState.total - 1));
+            }
+
+            // Mouse Events
+            handleIn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                activeDrag = 'in';
+                window.addEventListener('mousemove', onGlobalMouseMove);
+                window.addEventListener('mouseup', onGlobalMouseUp);
+            });
+
+            handleOut.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                activeDrag = 'out';
+                window.addEventListener('mousemove', onGlobalMouseMove);
+                window.addEventListener('mouseup', onGlobalMouseUp);
+            });
+
+            playheadCap.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                activeDrag = 'playhead';
+                window.addEventListener('mousemove', onGlobalMouseMove);
+                window.addEventListener('mouseup', onGlobalMouseUp);
+            });
+
+            container.addEventListener('mousedown', (e) => {
+                if (handleIn.contains(e.target) || handleOut.contains(e.target) || playheadCap.contains(e.target)) return;
+                const frame = getFrameFromClientX(e.clientX);
+                onVideoScrubInput(frame);
+                activeDrag = 'playhead';
+                window.addEventListener('mousemove', onGlobalMouseMove);
+                window.addEventListener('mouseup', onGlobalMouseUp);
+            });
+
+            function onGlobalMouseMove(e) {
+                if (!activeDrag) return;
+                const frame = getFrameFromClientX(e.clientX);
+                if (activeDrag === 'in') {
+                    onRangeInInput(frame);
+                } else if (activeDrag === 'out') {
+                    onRangeOutInput(frame);
+                } else if (activeDrag === 'playhead') {
+                    onVideoScrubInput(frame);
+                }
+            }
+
+            function onGlobalMouseUp() {
+                activeDrag = null;
+                window.removeEventListener('mousemove', onGlobalMouseMove);
+                window.removeEventListener('mouseup', onGlobalMouseUp);
+            }
+
+            // Touch support for mobile / tablets
+            handleIn.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                activeDrag = 'in'; 
+            }, { passive: false });
+
+            handleOut.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                activeDrag = 'out'; 
+            }, { passive: false });
+
+            playheadCap.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                e.stopPropagation(); 
+                activeDrag = 'playhead'; 
+            }, { passive: false });
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    if (handleIn.contains(e.target) || handleOut.contains(e.target) || playheadCap.contains(e.target)) return;
+                    const frame = getFrameFromClientX(e.touches[0].clientX);
+                    onVideoScrubInput(frame);
+                    activeDrag = 'playhead';
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!activeDrag || !e.touches.length) return;
+                const frame = getFrameFromClientX(e.touches[0].clientX);
+                if (activeDrag === 'in') onRangeInInput(frame);
+                else if (activeDrag === 'out') onRangeOutInput(frame);
+                else if (activeDrag === 'playhead') onVideoScrubInput(frame);
+            }, { passive: true });
+
+            window.addEventListener('touchend', () => { activeDrag = null; });
+        }
+
+        function toggleVideoPlayPause() {
+            if (videoPlayback.isPlaying) {
+                pauseVideo();
+            } else {
+                playVideo();
+            }
+        }
+
+        function playVideo() {
+            if (trimState.total === 0) return;
+            videoPlayback.isPlaying = true;
+            const icon = document.getElementById('video-play-icon');
+            if (icon) icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+
+            const interval = 1000 / videoPlayback.fps;
+            if (videoPlayback.timer) clearInterval(videoPlayback.timer);
+
+            videoPlayback.timer = setInterval(() => {
+                let next = videoPlayback.currentFrame + 1;
+                if (next > trimState.end || next < trimState.start) {
+                    next = trimState.start;
+                }
+                videoPlayback.currentFrame = next;
+                drawRGBFrame(videoPlayback.currentFrame);
+                if (histogramFilter) histogramFilter.draw();
+                updateTimelineUI();
+            }, interval);
+        }
+
+        function pauseVideo() {
+            videoPlayback.isPlaying = false;
+            if (videoPlayback.timer) {
+                clearInterval(videoPlayback.timer);
+                videoPlayback.timer = null;
+            }
+            const icon = document.getElementById('video-play-icon');
+            if (icon) icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+        }
+
+        function stepVideoFrame(delta) {
+            pauseVideo();
+            let next = videoPlayback.currentFrame + delta;
+            if (next < trimState.start) next = trimState.end;
+            if (next > trimState.end) next = trimState.start;
+            videoPlayback.currentFrame = next;
+            drawRGBFrame(videoPlayback.currentFrame);
+            if (histogramFilter) histogramFilter.draw();
+            updateTimelineUI();
+        }
+
+        // ==========================================
+        // CHROMA KEY & EYEDROPPER TOOLS
+        // ==========================================
+        function togglePipetteMode() {
+            isPipetteActive = !isPipetteActive;
+            const btn = document.getElementById('btn-pipette');
+            const cRgb = document.getElementById('canvas-rgb');
+
+            if (isPipetteActive) {
+                btn.style.background = 'rgba(245, 158, 11, 0.3)';
+                btn.style.color = '#fbbf24';
+                cRgb.style.cursor = 'crosshair';
+            } else {
+                btn.style.background = '';
+                btn.style.color = '';
+                cRgb.style.cursor = 'default';
+            }
+        }
+
+        function onCanvasRgbClick(e) {
+            if (!isPipetteActive || !pipeline.rawFrames || pipeline.rawFrames.length === 0) return;
+
+            const cRgb = document.getElementById('canvas-rgb');
+            const rect = cRgb.getBoundingClientRect();
+            const scaleX = cRgb.width / rect.width;
+            const scaleY = cRgb.height / rect.height;
+
+            const x = Math.floor((e.clientX - rect.left) * scaleX);
+            const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+            const frameIdx = videoPlayback.currentFrame;
+            const raw = pipeline.rawFrames[frameIdx] || pipeline.rawFrames[0];
+
+            if (x >= 0 && x < raw.width && y >= 0 && y < raw.height) {
+                const idx = (y * raw.width + x) * 4;
+                const r = raw.data[idx];
+                const g = raw.data[idx + 1];
+                const b = raw.data[idx + 2];
+
+                pipeline.keyColor = [r, g, b];
+                document.getElementById('select-keying-mode').value = 'custom';
+                document.getElementById('row-custom-color').style.display = 'flex';
+
+                const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+                document.getElementById('input-key-color').value = hex;
+                document.getElementById('color-swatch-display').style.backgroundColor = hex;
+                document.getElementById('label-rgb-color').textContent = `RGB(${r}, ${g}, ${b})`;
+
+                togglePipetteMode();
+                applyColorGradingPreview();
+            }
+        }
+
+        function onColorPickerInput(hex) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+
+            pipeline.keyColor = [r, g, b];
+            document.getElementById('color-swatch-display').style.backgroundColor = hex;
+            document.getElementById('label-rgb-color').textContent = `RGB(${r}, ${g}, ${b})`;
+        }
+
+        function onKeyingModeChanged() {
+            const mode = document.getElementById('select-keying-mode').value;
+            document.getElementById('row-custom-color').style.display = (mode === 'custom') ? 'flex' : 'none';
+            applyColorGradingPreview();
+        }
+
+        function applyColorGradingPreview() {
+            if (!pipeline.rawFrames || pipeline.rawFrames.length === 0) return;
+
+            const mode = document.getElementById('select-keying-mode').value;
+            const thresh = parseFloat(document.getElementById('slider-key-thresh').value);
+            const soft = parseFloat(document.getElementById('slider-key-soft').value);
+            const spill = parseFloat(document.getElementById('slider-spill').value);
+            const brightness = parseFloat(document.getElementById('slider-video-brightness').value);
+            const contrast = parseFloat(document.getElementById('slider-video-contrast').value);
+            const gamma = parseFloat(document.getElementById('slider-video-gamma').value);
+            const hIn = parseFloat(document.getElementById('slider-hist-in').value) || 0.02;
+            const hOut = parseFloat(document.getElementById('slider-hist-out').value) || 1.00;
+            const hGamma = parseFloat(document.getElementById('slider-hist-gamma').value) || 1.00;
+
+            const keepInterior = document.getElementById('chk-keep-interior') ? document.getElementById('chk-keep-interior').checked : false;
+
+            pipeline.configure({
+                keyingMode: mode,
+                keyThreshold: thresh,
+                keySoftness: soft,
+                spillSuppression: spill,
+                videoBrightness: brightness,
+                videoContrast: contrast,
+                videoGamma: gamma,
+                keepInteriorZones: keepInterior,
+                histIn: hIn,
+                histOut: hOut,
+                histGamma: hGamma,
+                colorCutoffThreshold: hIn
+            });
+
+            // Re-run Chroma Key & Color Grading Pre-Pass
+            pipeline.applyChromaKeyingPass();
+            drawRGBFrame(videoPlayback.currentFrame);
+            if (histogramFilter) histogramFilter.draw();
+
+            // If currently in single frame preview mode, refresh preview instantly
+            if (viewer3D && viewer3D.frameCount <= 1) {
+                previewCurrentFrame();
+            }
+        }
+
+        function resetHistogramFilter() {
+            if (histogramFilter) {
+                histogramFilter.setValues(0.02, 1.00, 1.00);
+            }
+            applyColorGradingPreview();
+        }
+
+        function resetColorGrading() {
+            document.getElementById('slider-video-brightness').value = 1.0;
+            document.getElementById('num-video-brightness').value = '1.00';
+
+            document.getElementById('slider-video-contrast').value = 1.0;
+            document.getElementById('num-video-contrast').value = '1.00';
+
+            document.getElementById('slider-video-gamma').value = 1.0;
+            document.getElementById('num-video-gamma').value = '1.00';
+
+            document.getElementById('slider-key-thresh').value = 0.05;
+            document.getElementById('num-key-thresh').value = '0.05';
+
+            document.getElementById('slider-key-soft').value = 0.08;
+            document.getElementById('num-key-soft').value = '0.08';
+
+            document.getElementById('slider-spill').value = 0.85;
+            document.getElementById('num-spill').value = '0.85';
+
+            if (document.getElementById('chk-keep-interior')) {
+                document.getElementById('chk-keep-interior').checked = false;
+            }
+
+            resetHistogramFilter();
+        }
+
+        // ==========================================
+        // FILE HANDLING & PROCEDURAL GENERATOR
+        // ==========================================
+        function setupDragAndDrop() {
+            const dropTargets = [document.getElementById('wrapper-rgb'), document.querySelector('.preview-col-video')].filter(Boolean);
+            dropTargets.forEach(target => {
+                ['dragenter', 'dragover'].forEach(name => {
+                    target.addEventListener(name, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        target.classList.add('dragover');
+                    }, false);
+                });
+
+                ['dragleave', 'drop'].forEach(name => {
+                    target.addEventListener(name, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        target.classList.remove('dragover');
+                    }, false);
+                });
+
+                target.addEventListener('drop', (e) => {
+                    const files = e.dataTransfer.files;
+                    if (files && files.length > 0) {
+                        loadVideoFile(files[0]);
+                    }
+                });
+            });
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                loadVideoFile(files[0]);
+            }
+        }
+
+        function loadVideoFile(file) {
+            if (file && file.name) {
+                loadedVideoBaseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_\-]/g, "_");
+            }
+            const video = document.getElementById('hidden-video');
+            const url = URL.createObjectURL(file);
+            video.src = url;
+            video.onloadedmetadata = () => {
+                console.log(`Video loaded: ${video.videoWidth}x${video.videoHeight}, duration: ${video.duration}s`);
+                extractAndPreviewVideo();
+            };
+        }
+
+        async function generateSampleExplosion() {
+            showProgressModal("Generating Procedural Test FX Explosion (60 frames)...");
+            const generator = new SampleExplosionGenerator();
+
+            const frames = await generator.generateSequence((progress) => {
+                updateProgress(progress * 0.9, `Rendering sparks & smoke fumerolles ${Math.round(progress * 100)}%`);
+            });
+
+            pipeline.rawFrames = frames;
+            pipeline.trimStart = 0;
+            pipeline.trimEnd = frames.length - 1;
+            pipeline.applyChromaKeyingPass();
+
+            updateProgress(1.0, "Sequence generated successfully!");
+            setTimeout(async () => {
+                closeProgressModal();
+                initTimelineRange(frames.length);
+                initPreviewCanvases();
+                drawRGBFrame(0);
+                if (histogramFilter) histogramFilter.draw();
+                await startFullBakePipeline();
+            }, 300);
+        }
+
+        async function extractAndPreviewVideo() {
+            const video = document.getElementById('hidden-video');
+            showProgressModal("Extracting frames from source video...");
+
+            try {
+                await pipeline.extractFramesFromVideo(video, 30, 10, (p, msg) => {
+                    updateProgress(p, msg);
+                });
+
+                closeProgressModal();
+                initTimelineRange(pipeline.rawFrames.length);
+                initPreviewCanvases();
+                drawRGBFrame(0);
+                if (histogramFilter) histogramFilter.draw();
+            } catch (err) {
+                alert("Error during extraction: " + err.message);
+                closeProgressModal();
+            }
+        }
+
+        // ==========================================
+        // 2D CANVAS DRAWING (RGB + FLOW)
+        // ==========================================
+        function initPreviewCanvases() {
+            if (!pipeline.rawFrames || pipeline.rawFrames.length === 0) return;
+            const f = pipeline.rawFrames[0];
+
+            const cRgb = document.getElementById('canvas-rgb');
+            cRgb.width = f.width;
+            cRgb.height = f.height;
+
+            const cDepth = document.getElementById('canvas-depth');
+            cDepth.width = f.width;
+            cDepth.height = f.height;
+
+            document.getElementById('rgb-stats').textContent = `${f.width}x${f.height} • ${pipeline.rawFrames.length}f`;
+            if (viewer3D) viewer3D.onResize();
+            if (histogramFilter) histogramFilter.resize();
+        }
+
+        function drawRGBFrame(frameIdx) {
+            if (!pipeline.rawFrames || frameIdx >= pipeline.rawFrames.length) return;
+            const cRgb = document.getElementById('canvas-rgb');
+            const ctx = cRgb.getContext('2d');
+
+            // Use keyed frame if available, else raw
+            const imgData = (pipeline.allKeyedFrames && pipeline.allKeyedFrames[frameIdx]) ? 
+                            pipeline.allKeyedFrames[frameIdx] : pipeline.rawFrames[frameIdx];
+
+            ctx.clearRect(0, 0, cRgb.width, cRgb.height);
+            ctx.putImageData(imgData, 0, 0);
+
+            // Draw Optical Flow Vector Overlay
+            const showFlow = document.getElementById('chk-show-flow').checked;
+            if (showFlow && pipeline.flowFields && pipeline.flowFields.length > 0) {
+                const localIdx = frameIdx - trimState.start;
+                if (localIdx >= 0 && localIdx < pipeline.flowFields.length) {
+                    const flow = pipeline.flowFields[localIdx];
+                    const density = parseInt(document.getElementById('slider-flow-density').value) || 12;
+
+                    ctx.strokeStyle = 'rgba(6, 182, 212, 0.85)';
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.lineWidth = 1.2;
+
+                    const w = flow.width;
+                    const h = flow.height;
+
+                    for (let y = density / 2; y < h; y += density) {
+                        for (let x = density / 2; x < w; x += density) {
+                            const idx = Math.floor(y) * w + Math.floor(x);
+                            if (imgData.data[idx * 4 + 3] < 20) continue;
+
+                            const u = flow.u[idx] * 2.0;
+                            const v = flow.v[idx] * 2.0;
+                            const mag = Math.hypot(u, v);
+
+                            if (mag > 0.3) {
+                                ctx.beginPath();
+                                ctx.moveTo(x, y);
+                                ctx.lineTo(x + u, y + v);
+                                ctx.stroke();
+
+                                ctx.beginPath();
+                                ctx.arc(x + u, y + v, 1.5, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function redrawPreviewWindows() {
+            drawRGBFrame(videoPlayback.currentFrame);
+        }
+
+        // ==========================================
+        // SINGLE FRAME PREVIEW GENERATOR
+        // ==========================================
+        function previewCurrentFrame() {
+            if (!pipeline.rawFrames || pipeline.rawFrames.length === 0) {
+                alert("Please load a video or generate a test FX explosion first.");
+                return;
+            }
+
+            pauseVideo();
+
+            const totalSplats = parseInt(document.getElementById('slider-total-splats').value);
+            const gradThresh = parseFloat(document.getElementById('slider-grad-thresh').value);
+            const depthScale = parseFloat(document.getElementById('slider-depth-scale').value);
+            const invertDepth = document.getElementById('chk-invert-depth').checked;
+            const focal = parseFloat(document.getElementById('slider-focal').value);
+            const autoCenter = document.getElementById('chk-auto-center').checked;
+            const originMode = document.getElementById('select-origin-mode') ? document.getElementById('select-origin-mode').value : 'center';
+            const offX = parseFloat(document.getElementById('slider-offset-x').value) || 0;
+            const offY = parseFloat(document.getElementById('slider-offset-y').value) || 0;
+            const offZ = parseFloat(document.getElementById('slider-offset-z').value) || 0;
+            const brightness = parseFloat(document.getElementById('slider-video-brightness').value);
+            const contrast = parseFloat(document.getElementById('slider-video-contrast').value);
+            const gamma = parseFloat(document.getElementById('slider-video-gamma').value);
+            const keyThresh = parseFloat(document.getElementById('slider-key-thresh').value);
+            const keySoft = parseFloat(document.getElementById('slider-key-soft').value);
+            const spill = parseFloat(document.getElementById('slider-spill').value);
+            const hIn = parseFloat(document.getElementById('slider-hist-in').value) || 0.02;
+            const hOut = parseFloat(document.getElementById('slider-hist-out').value) || 1.00;
+            const hGamma = parseFloat(document.getElementById('slider-hist-gamma').value) || 1.00;
+            const keepInterior = document.getElementById('chk-keep-interior') ? document.getElementById('chk-keep-interior').checked : false;
+
+            pipeline.configure({
+                targetSplatCount: totalSplats,
+                gradientThreshold: gradThresh,
+                depthScale: depthScale,
+                invertDepth: invertDepth,
+                focalLength: focal,
+                autoCenter3D: autoCenter,
+                originMode: originMode,
+                offsetX: offX,
+                offsetY: offY,
+                offsetZ: offZ,
+                videoBrightness: brightness,
+                videoContrast: contrast,
+                videoGamma: gamma,
+                keyThreshold: keyThresh,
+                keySoftness: keySoft,
+                spillSuppression: spill,
+                keepInteriorZones: keepInterior,
+                histIn: hIn,
+                histOut: hOut,
+                histGamma: hGamma,
+                colorCutoffThreshold: hIn
+            });
+
+            const frameIdx = videoPlayback.currentFrame || 0;
+            const res = pipeline.previewSingleFrame(frameIdx);
+
+            // Apply active animation effects
+            if (effectsManager) {
+                effectsManager.applyToPipeline(pipeline);
+                if (effectsManager.curveCanvas) {
+                    effectsManager.curveCanvas.setPlayhead(0, 1);
+                }
+            }
+
+            viewer3D.loadPipelineData(pipeline);
+            viewer3D.pause();
+
+            // Update UI Stats & HUD
+            document.getElementById('hud-splats').textContent = res.splatCount.toLocaleString('en-US');
+            document.getElementById('hud-frame').textContent = `Preview (${frameIdx + 1} / ${pipeline.rawFrames.length})`;
+            document.getElementById('hud-fps').textContent = `30.0`;
+            updateHudStats();
+
+            // Update 3D timeline slider
+            const tSlider = document.getElementById('timeline-slider');
+            tSlider.max = 0;
+            tSlider.value = 0;
+            document.getElementById('timeline-counter').textContent = `Frame ${frameIdx + 1}`;
+        }
+
+        function onVatFrameModeChanged() {
+            const frameMode = parseInt(document.getElementById('select-vat-frames').value) || 64;
+            document.getElementById('val-vat-frames').textContent = `${frameMode} frames`;
+            updateVatProfileOptions();
+            if (document.getElementById('code-modal').style.display === 'flex') {
+                switchCodeTab(activeTab);
+            }
+        }
+
+        function onVatProfileChanged() {
+            const frameMode = parseInt(document.getElementById('select-vat-frames').value) || 64;
+            const res = parseInt(document.getElementById('select-vat-profile').value) || 2048;
+            const info = VatTextureExporter.getProfileInfo(res, frameMode);
+            
+            const lblCap = document.getElementById('lbl-profile-capacity');
+            if (lblCap) {
+                lblCap.textContent = info.maxCapacity.toLocaleString('en-US');
+            }
+
+            const slider = document.getElementById('slider-total-splats');
+            const num = document.getElementById('num-total-splats');
+            if (slider) {
+                slider.max = info.maxCapacity;
+                if (parseInt(slider.value) > info.maxCapacity) {
+                    slider.value = info.maxCapacity;
+                    if (num) num.value = info.maxCapacity;
+                    document.getElementById('lbl-allocated-splats').textContent = info.maxCapacity.toLocaleString('en-US');
+                    onSettingChanged();
+                }
+            }
+            if (document.getElementById('code-modal').style.display === 'flex') {
+                switchCodeTab(activeTab);
+            }
+        }
+
+        function updateVatProfileOptions() {
+            const frameMode = parseInt(document.getElementById('select-vat-frames').value) || 64;
+            const profileSelect = document.getElementById('select-vat-profile');
+            if (!profileSelect) return;
+
+            const resolutions = [1024, 2048, 4096, 8192];
+            const labels = ['1K', '2K', '4K', '8K'];
+            const curVal = profileSelect.value;
+            profileSelect.innerHTML = '';
+
+            resolutions.forEach((res, idx) => {
+                const info = VatTextureExporter.getProfileInfo(res, frameMode);
+                const opt = document.createElement('option');
+                opt.value = res;
+                const capStr = (info.maxCapacity >= 1000000) 
+                    ? `${(info.maxCapacity / 1000000).toFixed(1)}M` 
+                    : `${Math.round(info.maxCapacity / 1000)}k`;
+                opt.textContent = `${labels[idx]} (${capStr} Splats • ${info.bandsCount} bands)`;
+                if (res.toString() === curVal) opt.selected = true;
+                profileSelect.appendChild(opt);
+            });
+
+            onVatProfileChanged();
+        }
+
+        // ==========================================
+        // FULL BAKING PIPELINE EXECUTION
+        // ==========================================
+        async function startFullBakePipeline() {
+            if (!pipeline.rawFrames || pipeline.rawFrames.length < 2) {
+                alert("Please load a video or generate the test FX explosion.");
+                return;
+            }
+
+            pauseVideo();
+
+            const totalSplats = parseInt(document.getElementById('slider-total-splats').value);
+            const gradThresh = parseFloat(document.getElementById('slider-grad-thresh').value);
+            const depthScale = parseFloat(document.getElementById('slider-depth-scale').value);
+            const invertDepth = document.getElementById('chk-invert-depth').checked;
+            const focal = parseFloat(document.getElementById('slider-focal').value);
+            const fadeIn = parseInt(document.getElementById('slider-fade-in').value);
+            const fadeOut = parseInt(document.getElementById('slider-fade-out').value);
+            const autoCenter = document.getElementById('chk-auto-center').checked;
+            const originMode = document.getElementById('select-origin-mode') ? document.getElementById('select-origin-mode').value : 'center';
+            const offX = parseFloat(document.getElementById('slider-offset-x').value) || 0;
+            const offY = parseFloat(document.getElementById('slider-offset-y').value) || 0;
+            const offZ = parseFloat(document.getElementById('slider-offset-z').value) || 0;
+            const enablePooling = document.getElementById('chk-splat-pooling').checked;
+            const poolingSkip = parseInt(document.getElementById('slider-pooling-skip').value) || 0;
+            const brightness = parseFloat(document.getElementById('slider-video-brightness').value);
+            const contrast = parseFloat(document.getElementById('slider-video-contrast').value);
+            const gamma = parseFloat(document.getElementById('slider-video-gamma').value);
+            const keyThresh = parseFloat(document.getElementById('slider-key-thresh').value);
+            const keySoft = parseFloat(document.getElementById('slider-key-soft').value);
+            const spill = parseFloat(document.getElementById('slider-spill').value);
+            const hIn = parseFloat(document.getElementById('slider-hist-in').value) || 0.02;
+            const hOut = parseFloat(document.getElementById('slider-hist-out').value) || 1.00;
+            const hGamma = parseFloat(document.getElementById('slider-hist-gamma').value) || 1.00;
+            const keepInterior = document.getElementById('chk-keep-interior') ? document.getElementById('chk-keep-interior').checked : false;
+
+            pipeline.configure({
+                targetSplatCount: totalSplats,
+                gradientThreshold: gradThresh,
+                depthScale: depthScale,
+                invertDepth: invertDepth,
+                focalLength: focal,
+                referenceFrameIdx: -1, // Peak frame is always automatically detected
+                fadeInFrames: fadeIn,
+                fadeOutFrames: fadeOut,
+                autoCenter3D: autoCenter,
+                originMode: originMode,
+                offsetX: offX,
+                offsetY: offY,
+                offsetZ: offZ,
+                enableSplatPooling: enablePooling,
+                poolingSkipFrames: poolingSkip,
+                videoBrightness: brightness,
+                videoContrast: contrast,
+                videoGamma: gamma,
+                keyThreshold: keyThresh,
+                keySoftness: keySoft,
+                spillSuppression: spill,
+                keepInteriorZones: keepInterior,
+                histIn: hIn,
+                histOut: hOut,
+                histGamma: hGamma,
+                colorCutoffThreshold: hIn
+            });
+
+            // Re-run Chroma Key & Color Grading Pre-Pass
+            pipeline.applyChromaKeyingPass();
+
+            // Apply active In/Out Trim Range
+            pipeline.setTrimRange(trimState.start, trimState.end);
+
+            if (pipeline.frames.length < 2) {
+                alert("Selected range must contain at least 2 frames.");
+                return;
+            }
+
+            showProgressModal(`Baking ${pipeline.frames.length} frames (${trimState.start + 1} to ${trimState.end + 1})...`);
+
+            try {
+                // Step 1: Depth Estimation (Alpha-aware)
+                updateProgress(0.1, "[1/4] Computing volumetric depth maps...");
+                await pipeline.computeDepthPass((p, msg) => {
+                    updateProgress(0.1 + p * 0.25, `[1/4] ${msg}`);
+                });
+
+                // Step 2: Dense Optical Flow
+                updateProgress(0.35, "[2/4] Computing dense pyramidal optical flow...");
+                await pipeline.computeOpticalFlowPass((p, msg) => {
+                    updateProgress(0.35 + p * 0.25, `[2/4] ${msg}`);
+                });
+
+                // Step 3: Adaptive Quadtree Splats
+                updateProgress(0.65, `[3/4] Adaptive Quadtree decomposition (${totalSplats.toLocaleString('en-US')} splats)...`);
+                const genInfo = pipeline.generateAdaptiveSplats();
+
+                // Step 4: 3D Advection & VAT
+                updateProgress(0.75, enablePooling 
+                    ? "[4/4] 3D temporal advection with dynamic splat pooling & life-cycle recycling..." 
+                    : "[4/4] 3D temporal advection & trajectory VAT baking...");
+                await pipeline.compute3DAdvectionPass((p, msg) => {
+                    updateProgress(0.75 + p * 0.2, `[4/4] ${msg}`);
+                });
+
+                // Step 4.5: Apply Post-Pass Animation Effects
+                if (effectsManager) {
+                    effectsManager.applyToPipeline(pipeline);
+                }
+
+                // Step 5: Pack Monolithic Binary
+                updateProgress(0.95, "Generating monolithic Unity binary package (SPLT)...");
+                const packInfo = pipeline.packMonolithicBinary(30.0);
+
+                // Load data into 3D Viewport
+                viewer3D.loadPipelineData(pipeline);
+                viewer3D.play();
+
+                // Update UI Stats & HUD
+                document.getElementById('hud-splats').textContent = packInfo.splatCount.toLocaleString('en-US');
+                document.getElementById('hud-frame').textContent = `1 / ${packInfo.frameCount}`;
+                document.getElementById('hud-fps').textContent = `${packInfo.fps.toFixed(1)}`;
+                updateHudStats();
+
+                // Update 3D timeline slider
+                const tSlider = document.getElementById('timeline-slider');
+                tSlider.max = packInfo.frameCount - 1;
+                tSlider.value = 0;
+
+                // Enable Export button
+                const btnVat = document.getElementById('btn-export-vat');
+                if (btnVat) btnVat.disabled = false;
+
+                updateProgress(1.0, "Bake completed successfully!");
+                setTimeout(() => {
+                    closeProgressModal();
+                }, 350);
+
+            } catch (err) {
+                console.error("Pipeline error:", err);
+                alert("Pipeline error: " + err.message);
+                closeProgressModal();
+            }
+        }
+
+        // ==========================================
+        // EXPORT MODAL & PACKAGE GENERATION
+        // ==========================================
+        function getExportPrefix() {
+            const frameModeSelect = document.getElementById('select-vat-frames');
+            const frameCount = frameModeSelect ? parseInt(frameModeSelect.value) : 64;
+            const splatSlider = document.getElementById('slider-total-splats');
+            const totalSplats = splatSlider ? parseInt(splatSlider.value) : 16000;
+            const splatCountK = Math.max(1, Math.round(totalSplats / 1000));
+            return `vat_f${frameCount}s_${splatCountK}k`;
+        }
+
+        function openExportModal() {
+            const input = document.getElementById('input-export-basename');
+            if (input) {
+                if (!input.value || !input.value.trim()) {
+                    input.value = loadedVideoBaseName || getExportPrefix();
+                }
+                updateExportPreviewNames();
+            }
+            document.getElementById('export-modal').style.display = 'flex';
+        }
+
+        function closeExportModal() {
+            document.getElementById('export-modal').style.display = 'none';
+        }
+
+        function getSanitizedExportBaseName() {
+            const input = document.getElementById('input-export-basename');
+            let val = (input && input.value) ? input.value.trim() : '';
+            if (!val) val = loadedVideoBaseName || getExportPrefix();
+            return val.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        }
+
+        function updateExportPreviewNames() {
+            const baseName = getSanitizedExportBaseName();
+            const pPos = document.getElementById('preview-filename-pos');
+            const pCol = document.getElementById('preview-filename-color');
+            const pSet = document.getElementById('preview-filename-settings');
+            const pZip = document.getElementById('preview-filename-zip');
+
+            if (pPos) pPos.textContent = `VAT_Pos_${baseName}.png`;
+            if (pCol) pCol.textContent = `VAT_Color_${baseName}.png`;
+            if (pSet) pSet.textContent = `VAT_Settings_${baseName}.txt`;
+            if (pZip) pZip.textContent = `${baseName}_VAT_Package.zip`;
+        }
+
+        async function confirmExportVatZip() {
+            const baseName = getSanitizedExportBaseName();
+            const posMode = document.getElementById('select-export-pos-mode') ? document.getElementById('select-export-pos-mode').value : 'position';
+            closeExportModal();
+            showProgressModal(`Creating Unity VAT Package (${baseName}_VAT_Package.zip)...`);
+            try {
+                const resSelect = document.getElementById('select-vat-profile');
+                const selectedRes = resSelect ? parseInt(resSelect.value) : 2048;
+                const frameModeSelect = document.getElementById('select-vat-frames');
+                const selectedFrames = frameModeSelect ? parseInt(frameModeSelect.value) : 64;
+
+                const exporter = new VatTextureExporter();
+                await exporter.generateVatZipPackage(pipeline, selectedRes, selectedFrames, `${baseName}_VAT_Package.zip`, baseName, posMode);
+                closeProgressModal();
+            } catch (e) {
+                alert("VAT ZIP export error: " + e.message);
+                closeProgressModal();
+            }
+        }
+
+        async function downloadExportIndividual(type) {
+            const baseName = getSanitizedExportBaseName();
+            const posMode = document.getElementById('select-export-pos-mode') ? document.getElementById('select-export-pos-mode').value : 'position';
+            const resSelect = document.getElementById('select-vat-profile');
+            const selectedRes = resSelect ? parseInt(resSelect.value) : 2048;
+            const frameModeSelect = document.getElementById('select-vat-frames');
+            const selectedFrames = frameModeSelect ? parseInt(frameModeSelect.value) : 64;
+
+            const exporter = new VatTextureExporter();
+            const vatGrid = exporter.sampleVatGrid(pipeline, selectedRes, selectedFrames, posMode);
+
+            if (type === 'color') {
+                showProgressModal(`Generating VAT_Color_${baseName}.png...`);
+                try {
+                    const colorBlob = await exporter.generateColorTextureBlob(vatGrid.colorData, selectedRes);
+                    const url = URL.createObjectURL(colorBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `VAT_Color_${baseName}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    closeProgressModal();
+                } catch (e) {
+                    alert("Color export error: " + e.message);
+                    closeProgressModal();
+                }
+            } else if (type === 'pos') {
+                showProgressModal(`Generating VAT_Pos_${baseName}.png...`);
+                try {
+                    const posPngBlob = await exporter.generateNormalizedPosTextureBlob(vatGrid.posData, vatGrid.bounds, selectedRes);
+                    const url = URL.createObjectURL(posPngBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `VAT_Pos_${baseName}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    closeProgressModal();
+                } catch (e) {
+                    alert("Pos PNG export error: " + e.message);
+                    closeProgressModal();
+                }
+            } else if (type === 'settings') {
+                showProgressModal(`Generating VAT_Settings_${baseName}.txt...`);
+                try {
+                    const txtContent = exporter.generateUnitySettingsTxt(vatGrid, selectedRes, selectedFrames, baseName, pipeline);
+                    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `VAT_Settings_${baseName}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    closeProgressModal();
+                } catch (e) {
+                    alert("Settings export error: " + e.message);
+                    closeProgressModal();
+                }
+            }
+        }
+
+        function togglePlayPause() {
+            if (!viewer3D) return;
+            const playing = viewer3D.togglePlay();
+            const icon = document.getElementById('play-icon');
+            if (playing) {
+                icon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+            } else {
+                icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+            }
+        }
+
+        function onTimelineInput(val) {
+            if (!viewer3D) return;
+            viewer3D.pause();
+            const icon = document.getElementById('play-icon');
+            icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+            viewer3D.updateToFrame(parseInt(val));
+        }
+
+        function showProgressModal(initialText) {
+            document.getElementById('progress-modal').style.display = 'flex';
+            document.getElementById('progress-bar-fill').style.width = '0%';
+            document.getElementById('progress-step-text').textContent = initialText || "Processing...";
+        }
+
+        function updateProgress(progress01, text) {
+            const pct = Math.max(0, Math.min(100, Math.round(progress01 * 100)));
+            document.getElementById('progress-bar-fill').style.width = `${pct}%`;
+            if (text) document.getElementById('progress-step-text').textContent = text;
+        }
+
+        function closeProgressModal() {
+            document.getElementById('progress-modal').style.display = 'none';
+        }
+
+        function openCodeModal() {
+            document.getElementById('code-modal').style.display = 'flex';
+            switchCodeTab('vat-shader');
+        }
+
+        function closeCodeModal() {
+            document.getElementById('code-modal').style.display = 'none';
+        }
+
+        function switchCodeTab(tab) {
+            activeTab = tab;
+            ['vat-shader', 'vat-spawner', 'vat-mesh', 'vat-settings', 'vat-readme'].forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if (el) el.classList.toggle('active', t === tab);
+            });
+
+            const resSelect = document.getElementById('select-vat-profile');
+            const selectedRes = resSelect ? parseInt(resSelect.value) : 2048;
+            const frameModeSelect = document.getElementById('select-vat-frames');
+            const selectedFrames = frameModeSelect ? parseInt(frameModeSelect.value) : 64;
+            const splatSlider = document.getElementById('slider-total-splats');
+            const currentSplats = splatSlider ? parseInt(splatSlider.value) : 16384;
+            const bbox = (pipeline && pipeline.computeBoundingBox) ? pipeline.computeBoundingBox() : null;
+
+            const content = document.getElementById('code-content');
+            if (tab === 'vat-shader') content.textContent = UnityTemplates.getVatURPShader(selectedRes, selectedFrames, bbox);
+            else if (tab === 'vat-spawner') content.textContent = UnityTemplates.getVatSpawnerCS(selectedRes, selectedFrames);
+            else if (tab === 'vat-mesh') content.textContent = UnityTemplates.getVatMeshGenerator(currentSplats);
+            else if (tab === 'vat-settings') {
+                const exporter = new VatTextureExporter();
+                const modeSelect = document.getElementById('select-export-pos-mode');
+                const posMode = modeSelect ? modeSelect.value : 'position';
+                const baseName = getSanitizedExportBaseName();
+                const vatGrid = pipeline ? exporter.sampleVatGrid(pipeline, selectedRes, selectedFrames, posMode) : { splatCount: currentSplats, bounds: bbox, posMode };
+                content.textContent = exporter.generateUnitySettingsTxt(vatGrid, selectedRes, selectedFrames, baseName, pipeline);
+            }
+            else if (tab === 'vat-readme') {
+                const prefix = getExportPrefix();
+                content.textContent = `# 2.5D Gaussian Splats VAT Package (${prefix})
+
+## 🚀 Quick Setup in Unity URP
+1. Import the generated textures into \`Assets/SplatsVAT/\`.
+2. Select \`${prefix}_color.png\` and \`${prefix}_pos_normalized.png\`:
+   - Texture Type: Default
+   - Filter Mode: Bilinear
+   - Wrap Mode: Clamp
+3. Create a Material using shader \`Custom/2.5D_GaussianSplat_VAT_URP\`.
+4. Assign:
+   - \`_ColorTex\` -> \`${prefix}_color.png\`
+   - \`_PosTex\` -> \`${prefix}_pos_normalized.png\`
+5. Attach \`SplatVATSpawner.cs\` to a GameObject in your scene and assign the Material.
+6. Press Play in Unity and press **[N]** to spawn explosions dynamically in front of the camera!
+`;
+            }
+        }
+
+        function copyCurrentCode() {
+            const content = document.getElementById('code-content').textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                alert("Code copied to clipboard!");
+            });
+        }
+    </script>
+</body>
+</html>
