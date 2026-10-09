@@ -178,9 +178,3 @@ YourUnityProject/Assets/SplatVat/
 | **Color Texture Encoding** | RGBA8: RGB = Color tint, A [0.0 - 0.5] = Opacity, A ]0.5 - 1.0] = HDR Emissive |
 | **Position Texture Encoding** | Normalized 0..1 RGB = Position in bounding box, A = Splat radius |
 | **Unity Compatibility** | Unity 2021.3+, 2022.3+, 2023+, Unity 6+ (Universal Render Pipeline - URP) |
-
----
-
-## License
-
-Created for the Antigravity offline workstation suite. Free to use in personal and commercial Unity projects.
